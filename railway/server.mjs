@@ -6,10 +6,12 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://simocosto-beep.git
 const AI_BASE_URL = (process.env.AI_BASE_URL || "").replace(/\/$/, "");
 const AI_API_KEY = process.env.AI_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || "";
-const OWNER_PIN = process.env.OWNER_PIN || "";
+const OWNER_PIN = String(process.env.OWNER_PIN || "").trim();
 const OWNER_SESSION_SECRET = process.env.OWNER_SESSION_SECRET || "";
 const OWNER_SESSION_MS = 24 * 60 * 60 * 1000;
+
 const loginAttempts = new Map();
+const requestBuckets = new Map();
 
 function json(res, status, body, origin="*") {
   res.writeHead(status, {
@@ -25,18 +27,44 @@ function json(res, status, body, origin="*") {
 }
 
 function allowedOrigin(req) {
-  const origin = req.headers.origin || "";
-  if (!origin) return ALLOWED_ORIGIN;
+  const origin = String(req.headers.origin || "");
+  if (!origin) return "";
   if (origin === ALLOWED_ORIGIN) return origin;
-  if (origin.startsWith("http://localhost:")) return origin;
+  if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) return origin;
   return "";
+}
+
+function clientKey(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+}
+
+function consumeRate(req, owner=false) {
+  const now = Date.now();
+  const windowMs = 60000;
+  const limit = owner ? 120 : 30;
+  const key = clientKey(req) + ":" + (owner ? "owner" : "visitor");
+  let entry = requestBuckets.get(key);
+  if (!entry || now - entry.start >= windowMs) entry = { start: now, count: 0 };
+  entry.count += 1;
+  requestBuckets.set(key, entry);
+
+  if (requestBuckets.size > 5000) {
+    for (const [k, v] of requestBuckets) {
+      if (now - v.start > 300000) requestBuckets.delete(k);
+    }
+  }
+
+  return {
+    ok: entry.count <= limit,
+    retryAfter: Math.max(1, Math.ceil((windowMs - (now - entry.start)) / 1000)),
+  };
 }
 
 async function readBody(req) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 200_000) throw new Error("body too large");
+    if (raw.length > 220000) throw new Error("body_too_large");
   }
   return raw ? JSON.parse(raw) : {};
 }
@@ -46,7 +74,7 @@ function digest(value) {
 }
 
 function safeEqual(a, b) {
-  return crypto.timingSafeEqual(digest(a), digest(b));
+  return crypto.timingSafeEqual(digest(String(a).trim()), digest(String(b).trim()));
 }
 
 function signOwner(payload) {
@@ -59,13 +87,13 @@ function verifyOwnerToken(token) {
   if (!token || !OWNER_SESSION_SECRET) return false;
   const parts = String(token).split(".");
   if (parts.length !== 2) return false;
-  const [encoded, sig] = parts;
+  const encoded = parts[0], sig = parts[1];
   const expected = crypto.createHmac("sha256", OWNER_SESSION_SECRET).update(encoded).digest("base64url");
   const a = Buffer.from(sig), b = Buffer.from(expected);
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
   try {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
-    return payload?.role === "owner" && Number(payload.exp) > Date.now();
+    return payload && payload.role === "owner" && Number(payload.exp) > Date.now();
   } catch {
     return false;
   }
@@ -75,15 +103,11 @@ function ownerTokenFrom(req) {
   return String(req.headers["x-sahbi-owner-token"] || "");
 }
 
-function clientKey(req) {
-  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
-}
-
 function canAttemptLogin(req) {
   const key = clientKey(req);
   const now = Date.now();
   const entry = loginAttempts.get(key);
-  if (!entry || now - entry.first > 10 * 60 * 1000) {
+  if (!entry || now - entry.first > 600000) {
     loginAttempts.set(key, { first: now, count: 0 });
     return true;
   }
@@ -94,29 +118,31 @@ function noteFailedLogin(req) {
   const key = clientKey(req);
   const now = Date.now();
   const entry = loginAttempts.get(key);
-  if (!entry || now - entry.first > 10 * 60 * 1000) loginAttempts.set(key, { first: now, count: 1 });
+  if (!entry || now - entry.first > 600000) loginAttempts.set(key, { first: now, count: 1 });
   else {
     entry.count += 1;
     loginAttempts.set(key, entry);
   }
 }
 
-async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
+async function callModel(model, messages, owner, maxTokens, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const payload = {
       model,
-      messages: normalized,
-      temperature: owner ? 0.45 : 0.5,
+      messages,
+      temperature: owner ? 0.4 : 0.5,
       max_tokens: maxTokens,
       stream: false,
     };
+
     if (model === "stealth/space-bunny-alpha") {
       payload.reasoning = { enabled: true, exclude: true };
-    } else if (/nemotron|qwen3\.8|gemma-4/i.test(model)) {
+    } else if (/nemotron/i.test(model)) {
       payload.reasoning = { enabled: false, exclude: true };
     }
+
     const upstream = await fetch(AI_BASE_URL + "/chat/completions", {
       method: "POST",
       headers: {
@@ -128,7 +154,7 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
     });
 
     if (!upstream.ok) {
-      const detail = (await upstream.text()).slice(0, 500);
+      const detail = (await upstream.text()).slice(0, 350);
       const error = new Error("upstream_" + upstream.status);
       error.status = upstream.status;
       error.detail = detail;
@@ -141,40 +167,50 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
   }
 }
 
-function looksLikeDarija(messages) {
-  const text = messages.filter(m => m.role === "user").slice(-3).map(m => String(m.content || "")).join(" ").toLowerCase();
-  return /(\bwach\b|\bash\b|\bchno\b|\bshno\b|\bkifach\b|\bbghit\b|\bbghiti\b|\b3lach\b|\bfin\b|\bdaba\b|\bsahbi\b|\bkhoya\b|\bdir\b|\bndir\b|\bkat\s*hder\b|\bkathder\b|\bkatkhreb9\b|\bkhreb9\b|\bmzyan\b|\bzwin\b|\biwa\b|\bwakha\b|\bla bas\b|\blabas\b|\bhamdollah\b)/i.test(text);
-}
-
-async function callWithFallback(normalized, owner, maxTokens) {
-  const darija = looksLikeDarija(normalized);
-  const candidates = darija
-    ? [
-        { model: "mistralai/mistral-small-3.1-24b-instruct:free", timeout: 9000 },
-        { model: AI_MODEL, timeout: 8000 },
-        { model: "stealth/space-bunny-alpha", timeout: 10000 },
-      ]
-    : [
-        { model: AI_MODEL, timeout: 8000 },
-        { model: "stealth/space-bunny-alpha", timeout: 10000 },
-      ];
+async function callWithFallback(messages, owner, maxTokens) {
+  const candidates = [
+    { model: AI_MODEL, timeout: 8000 },
+    { model: "stealth/space-bunny-alpha", timeout: 9000 },
+  ];
 
   let lastError;
   for (const candidate of candidates) {
     try {
-      const data = await callModel(candidate.model, normalized, owner, maxTokens, candidate.timeout);
+      const data = await callModel(candidate.model, messages, owner, maxTokens, candidate.timeout);
       return { data, modelUsed: candidate.model };
     } catch (error) {
       lastError = error;
-      const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || "unknown");
+      const reason = error && error.name === "AbortError" ? "timeout" : String(error && error.message || "unknown");
       console.warn("model_attempt_failed", candidate.model, reason);
     }
   }
   throw lastError || new Error("all_models_failed");
 }
 
+function finalText(data) {
+  let text = String(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim();
+  if (/here(?:'|’)s a thinking process|here is (?:my|a) thinking process|chain[- ]of[- ]thought|^analysis\s*:/i.test(text)) {
+    const lines = text.split("\n");
+    const idx = lines.findIndex(line => /^(final|answer|réponse finale|response)\s*[:：]/i.test(line.trim()));
+    if (idx >= 0) text = lines.slice(idx + 1).join("\n").trim();
+  }
+  return text;
+}
+
 const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url || "/", "http://localhost");
   const origin = allowedOrigin(req);
+
+  if (req.method === "GET" && url.pathname === "/health") {
+    return json(res, 200, {
+      ok: true,
+      service: "sahbi-api",
+      providerConfigured: Boolean(AI_BASE_URL && AI_API_KEY && AI_MODEL),
+      ownerModeConfigured: Boolean(OWNER_PIN && OWNER_SESSION_SECRET),
+      version: "core-v2",
+    }, origin || "*");
+  }
+
   if (!origin) return json(res, 403, { error: "origin_not_allowed" }, "null");
 
   if (req.method === "OPTIONS") {
@@ -186,16 +222,7 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  if (req.method === "GET" && req.url === "/health") {
-    return json(res, 200, {
-      ok: true,
-      service: "sahbi-api",
-      providerConfigured: Boolean(AI_BASE_URL && AI_API_KEY && AI_MODEL),
-      ownerModeConfigured: Boolean(OWNER_PIN && OWNER_SESSION_SECRET),
-    }, origin);
-  }
-
-  if (req.method === "POST" && req.url === "/api/owner/login") {
+  if (req.method === "POST" && url.pathname === "/api/owner/login") {
     if (!OWNER_PIN || !OWNER_SESSION_SECRET) {
       return json(res, 503, { error: "owner_not_configured" }, origin);
     }
@@ -204,70 +231,77 @@ const server = http.createServer(async (req, res) => {
     }
     try {
       const body = await readBody(req);
-      const pin = String(body.pin || "");
+      const pin = String(body.pin || "").trim();
       if (pin.length < 6 || !safeEqual(pin, OWNER_PIN)) {
         noteFailedLogin(req);
-        return json(res, 401, { error: "invalid_pin" }, origin);
+        return json(res, 401, { error: "invalid_pin", message: "PIN Owner incorrect." }, origin);
       }
       loginAttempts.delete(clientKey(req));
       const exp = Date.now() + OWNER_SESSION_MS;
-      return json(res, 200, { ok: true, token: signOwner({ role: "owner", exp, v: 1 }), expiresAt: exp }, origin);
+      return json(res, 200, { ok: true, token: signOwner({ role: "owner", exp, v: 2 }), expiresAt: exp }, origin);
     } catch {
       return json(res, 400, { error: "invalid_request" }, origin);
     }
   }
 
-  if (req.method === "GET" && req.url === "/api/owner/status") {
+  if (req.method === "GET" && url.pathname === "/api/owner/status") {
     return json(res, 200, { owner: verifyOwnerToken(ownerTokenFrom(req)) }, origin);
   }
 
-  if (req.method === "POST" && req.url === "/api/owner/logout") {
+  if (req.method === "POST" && url.pathname === "/api/owner/logout") {
     return json(res, 200, { ok: true }, origin);
   }
 
-  if (req.method === "POST" && req.url === "/api/chat") {
+  if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!AI_BASE_URL || !AI_API_KEY || !AI_MODEL) {
-      return json(res, 503, {
-        error: "provider_not_configured",
-        message: "Sahbi backend is online, but no inference provider is configured yet."
-      }, origin);
+      return json(res, 503, { error: "provider_not_configured", message: "Le moteur IA n'est pas configuré." }, origin);
     }
 
     try {
       const body = await readBody(req);
-      const messages = Array.isArray(body.messages) ? body.messages.slice(-20) : [];
-      const requestedMaxTokens = Math.max(1, Math.min(Number(body.max_tokens || 1800), 8000));
-      if (!messages.length) return json(res, 400, { error: "messages_required" }, origin);
+      const raw = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
+      if (!raw.length) return json(res, 400, { error: "messages_required" }, origin);
 
       const owner = verifyOwnerToken(ownerTokenFrom(req));
-      const normalized = messages.map(m => ({
+      const rate = consumeRate(req, owner);
+      if (!rate.ok) {
+        return json(res, 429, {
+          error: "rate_limited",
+          message: "Trop de requêtes. Réessaie dans quelques secondes.",
+          retryAfter: rate.retryAfter,
+        }, origin);
+      }
+
+      const requestedMaxTokens = Math.max(1, Math.min(Number(body.max_tokens || 1400), owner ? 8000 : 5000));
+      const messages = raw.map(m => ({
         role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-        content: String(m.content || "").slice(0, 24000),
+        content: String(m.content || "").slice(0, 20000),
       }));
 
-      normalized.unshift({
+      messages.unshift({
         role: "system",
-        content: "Return only the final answer for the user. Never reveal chain-of-thought, hidden reasoning, scratch work, internal analysis, or a thinking process. Do not write phrases such as 'Here is my thinking process', 'Analysis', or step-by-step private reasoning. Keep internal reasoning private and answer naturally, directly, and concisely in the user's language. If the user writes Moroccan Darija, especially Latin/Arabizi Darija, reply in natural Moroccan Darija. Do not translate every phrase, do not mix in French unless the user does, and do not invent fake Darija. Prefer short authentic Moroccan phrasing."
+        content: "You are Sahbi AI. Return only the useful final answer. Never expose chain-of-thought, hidden reasoning, scratch work, or internal analysis. Match the user's language and tone. Be concise for simple questions and thorough for complex work. Never claim to have used tools or accounts unless tool results were actually provided in the conversation."
       });
 
       if (owner) {
-        normalized.unshift({
+        messages.unshift({
           role: "system",
-          content: "OWNER MODE AUTHENTICATED. The user is the authenticated owner of Sahbi AI. Treat them as a trusted owner: use their saved project context and advanced Sahbi capabilities when available, be proactive and concise, and distinguish owner-only app/admin actions from visitor actions. Never expose credentials or secrets. Keep confirmations for destructive, irreversible, financial, account-permission, or external side-effect actions. Do not claim capabilities that are not actually implemented."
+          content: "OWNER MODE AUTHENTICATED. The user is Sahbi AI's authenticated owner. Be proactive and make full use of Sahbi's implemented memory, project context, Builder and tools. Owner status grants product features, not permission to expose secrets or bypass confirmations for destructive, irreversible, financial, account-permission or external side-effect actions."
         });
       }
 
-      const { data, modelUsed } = await callWithFallback(normalized, owner, requestedMaxTokens);
-      let text = String(data?.choices?.[0]?.message?.content || "").trim();
-      if (/here(?:'|’)s a thinking process|here is (?:my|a) thinking process|chain[- ]of[- ]thought|^analysis\s*:/i.test(text)) {
-        const lines = text.split("\n");
-        const finalIndex = lines.findIndex(line => /^(final|answer|réponse finale|response)\s*[:：]/i.test(line.trim()));
-        if (finalIndex >= 0) text = lines.slice(finalIndex + 1).join("\n").trim();
-      }
-      return json(res, 200, { text, owner, model: modelUsed }, origin);
+      const result = await callWithFallback(messages, owner, requestedMaxTokens);
+      const text = finalText(result.data);
+      if (!text) return json(res, 502, { error: "empty_model_response", message: "Le moteur IA a renvoyé une réponse vide." }, origin);
+
+      return json(res, 200, { text, owner, model: result.modelUsed }, origin);
     } catch (error) {
-      console.error("chat_error", error);
-      return json(res, 500, { error: "internal_error" }, origin);
+      const timedOut = error && error.name === "AbortError";
+      console.error("chat_error", timedOut ? "timeout" : String(error && error.message || error));
+      return json(res, timedOut ? 504 : 503, {
+        error: timedOut ? "ai_timeout" : "ai_temporarily_unavailable",
+        message: timedOut ? "Le moteur IA met trop de temps. Réessaie." : "Le moteur IA est momentanément indisponible. Réessaie.",
+      }, origin);
     }
   }
 
@@ -275,5 +309,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("sahbi-api listening on", PORT);
+  console.log("sahbi-api core-v2 listening on", PORT);
 });
