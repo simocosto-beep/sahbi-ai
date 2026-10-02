@@ -97,7 +97,7 @@ main{padding:18px 14px 160px}
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button id="cloudModeBtn">☁️ Sahbi Cloud</button><button id="ownerBtn">👑 Owner</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./security.html'">🛡️ Security Lab</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
+<div class="row"><button id="cloudModeBtn">☁️ Sahbi Cloud</button><button id="ownerBtn">👑 Owner</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Outils avancés</button><button onclick="location.href='./sandbox.html'">🧪 Lab</button><button onclick="location.href='./security.html'">🛡️ Security</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -326,24 +326,83 @@ Outils: web (recherche encyclopédique), url (lire une URL), weather (météo d'
 Choisis un outil seulement si cela apporte une donnée externe ou une action locale utile. Texte utilisateur: ${userText}`;
  try{const r=await engine.chat.completions.create({messages:[{role:"system",content:planner}],temperature:0,max_tokens:120});const raw=r.choices?.[0]?.message?.content||"";const m=raw.match(/\{[\s\S]*\}/);return m?JSON.parse(m[0]):{tool:"none",arg:""}}catch{return {tool:"none",arg:""}}
 }
+function looksLikeSecurityAudit(t){
+ const s=String(t||"").toLowerCase();
+ return /(audit|audite|scan|scanne|scanner|sécurité|security|vuln|failles?).{0,60}(site|url|domaine|domain|https?:\/\/)/i.test(s) || /(mon site|my site).{0,40}(audit|scan|sécurité|security)/i.test(s);
+}
+function extractFirstUrl(t){
+ const m=String(t||"").match(/https?:\/\/[^\s<>"']+/i);
+ return m?m[0].replace(/[),.;!?]+$/,""):"";
+}
+async function runSecurityFromChat(text){
+ const progress=bubble("assistant","🛡️ Je prépare l’audit Security Lab…");
+ if(!ownerToken){(progress._body||progress).textContent="👑 Active d’abord le mode Owner pour lancer un audit depuis le chat.";return true}
+ let target=extractFirstUrl(text);
+ if(!target){target=(window.prompt("URL ou domaine à auditer :")||"").trim()}
+ if(!target){(progress._body||progress).textContent="Audit annulé.";return true}
+ const ok=window.confirm("Confirme que tu possèdes cette cible ou que tu as une autorisation explicite pour l’auditer.");
+ if(!ok){(progress._body||progress).textContent="Audit annulé : autorisation non confirmée.";return true}
+ try{
+   const r=await fetch(SAHBI_API+"/api/security/check",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},body:JSON.stringify({target,authorized:true})});
+   const d=await r.json().catch(()=>({}));
+   if(!r.ok)throw new Error(d?.message||d?.error||("Security Lab HTTP "+r.status));
+   const lines=(d.findings||[]).map(f=>"["+String(f.severity||"info").toUpperCase()+"] "+f.title+" — "+f.detail);
+   const report="🛡️ Audit terminé ✅\n"+d.target+" · HTTP "+d.status+" · IP "+d.resolvedIp+
+    "\nHigh: "+(d.summary?.high||0)+" · Medium: "+(d.summary?.medium||0)+" · Low: "+(d.summary?.low||0)+" · Info: "+(d.summary?.info||0)+
+    (lines.length?"\n\n"+lines.join("\n"):"\n\nAucun finding dans les checks passifs.");
+   (progress._body||progress).textContent=report;
+   history.push({role:"assistant",content:report});save();
+   return true;
+ }catch(e){(progress._body||progress).textContent="Erreur Security Lab : "+(e.message||e);return true}
+}
+function attachedLanguage(){
+ const n=(attachedName||"").toLowerCase();
+ if(n.endsWith(".py"))return "python";
+ if(n.endsWith(".js"))return "javascript";
+ if(n.endsWith(".c"))return "c";
+ if(n.endsWith(".cpp")||n.endsWith(".cc")||n.endsWith(".cxx"))return "cpp";
+ if(n.endsWith(".rs"))return "rust";
+ if(n.endsWith(".java"))return "java";
+ return "";
+}
+function looksLikeCodeTest(t){
+ const s=String(t||"").toLowerCase();
+ return /(teste|test|compile|compile-moi|run|exécute|execute|lance).{0,35}(code|fichier|programme|script)/i.test(s) || /^\s*\/test\b/i.test(s);
+}
+async function runAttachedCodeFromChat(){
+ const lang=attachedLanguage();
+ if(!attachedText||!lang)return false;
+ const progress=bubble("assistant","🧪 Build Lab : je compile/teste ton fichier…");
+ if(!ownerToken){(progress._body||progress).textContent="👑 Active d’abord le mode Owner pour utiliser Build Lab.";return true}
+ try{
+   const r=await fetch(SAHBI_API+"/api/build",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},body:JSON.stringify({language:lang,source:attachedText,stdin:""})});
+   const d=await r.json().catch(()=>({}));
+   if(!r.ok)throw new Error(d?.message||d?.error||("Build Lab HTTP "+r.status));
+   const report="🧪 Build Lab\nStatus: "+d.status+
+    (d.compileOutput?"\n\nCOMPILE:\n"+d.compileOutput:"")+
+    (d.stdout?"\n\nSTDOUT:\n"+d.stdout:"")+
+    (d.stderr?"\n\nSTDERR:\n"+d.stderr:"")+
+    (d.exitCode!==null&&d.exitCode!==undefined?"\n\nExit: "+d.exitCode:"");
+   (progress._body||progress).textContent=report;
+   history.push({role:"assistant",content:report});save();
+   return true;
+ }catch(e){(progress._body||progress).textContent="Erreur Build Lab : "+(e.message||e);return true}
+}
 function looksLikeBuildRequest(t){
  const s=t.toLowerCase();
  return /(cr[eé]e|construis|fabrique|d[eé]veloppe|build|make).{0,40}(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme)/i.test(s);
 }
 async function generateFinalProduct(userText){
- const progress=bubble("assistant","🏗️ Je construis ton produit…");
+ const progress=bubble("assistant","🏗️ Je construis, teste et prépare le produit…");
  const chosen=/(syst[eè]me d'exploitation|operating system|kernel|bootloader|\bos\b)/i.test(userText)?"systems":/(backend|api|cli|logiciel|software|python|node|rust|c\+\+)/i.test(userText)?"software":"web";
  try{
    if(chosen==="web"){
      const spec=`Tu es Sahbi AI Product Builder. Retourne UNIQUEMENT JSON {"html":"...","css":"...","js":"..."}.
 Construis un produit web complet, responsive, propre et fonctionnel selon la demande. Les boutons doivent fonctionner. Utilise localStorage si une persistance locale suffit. Pas d'explication hors JSON.
 DEMANDE: ${userText}`;
-     let raw="";
-     if(backendMode==="cloud") raw=await cloudChat([{role:"system",content:spec}],4000);
-     else if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,5000)}],500);
-     else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.35,max_tokens:7000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
+     const raw=await cloudChat([{role:"system",content:spec}],4000);
+     const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
      let d=JSON.parse(m[0]);
-     // basic self-check + one repair pass
      let issues=[];try{new Function(d.js||"")}catch(e){issues.push("Erreur JS: "+e.message)}
      if(!/<[a-z][\s\S]*>/i.test(d.html||""))issues.push("HTML invalide");
      if(issues.length){
@@ -353,35 +412,73 @@ PROBLÈMES: ${issues.join(" | ")}
 HTML:${(d.html||"").slice(0,12000)}
 CSS:${(d.css||"").slice(0,9000)}
 JS:${(d.js||"").slice(0,12000)}`;
-       const rr=await engine.chat.completions.create({messages:[{role:"system",content:fix}],temperature:.1,max_tokens:7000});
-       const mm=(rr.choices?.[0]?.message?.content||"").match(/\{[\s\S]*\}/);if(mm)d=JSON.parse(mm[0]);
+       const repaired=await cloudChat([{role:"system",content:fix}],4000);
+       const mm=repaired.match(/\{[\s\S]*\}/);if(mm)d=JSON.parse(mm[0]);
      }
-     const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();
+     const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
+     const zip=new JSZip();
      const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${d.css||""}</style></head><body>${d.html||""}<script>${String(d.js||"").replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;
-     zip.file("index.html",html);zip.file("README.md","# Produit Sahbi AI\n\nOuvre index.html ou déploie le dossier sur un hébergeur statique.");
-     const blob=await zip.generateAsync({type:"blob"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-product-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-     (progress._body||progress).textContent="🏁 Produit final prêt ✅\nJe viens de télécharger le ZIP final sur ton appareil.";
-     history.push({role:"assistant",content:"🏁 Produit final prêt ✅ — ZIP téléchargé."});save();return true;
-   } else {
-     const spec=`Tu es Sahbi AI Product Builder Pro. Retourne UNIQUEMENT JSON {"summary":"...","run":"...","files":[{"path":"README.md","content":"..."},{"path":"...","content":"..."}]}.
-Crée un vrai projet multi-fichiers cohérent et progressif. Inclure README, architecture, commandes build/run et code initial utile.
-Pour un OS: produire un OS éducatif minimal réaliste, pas prétendre livrer un OS de production complet.
-DEMANDE: ${userText}`;
-     let raw="";
-     if(backendMode==="cloud") raw=await cloudChat([{role:"system",content:spec}],5000);
-     else if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,6000)}],600);
-     else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.3,max_tokens:8000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
-     const d=JSON.parse(m[0]);const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();
-     for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
-     if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Produit Sahbi AI\n\n"+(d.summary||"Projet généré"));
-     zip.file("SAHBI-DELIVERY.txt","Résumé:\n"+(d.summary||"")+"\n\nBuild / Run:\n"+(d.run||"Voir README"));
-     const blob=await zip.generateAsync({type:"blob"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-software-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-     (progress._body||progress).textContent="🏁 Projet final prêt ✅\nJe viens de télécharger le ZIP multi-fichiers.";
-     history.push({role:"assistant",content:"🏁 Projet final prêt ✅ — ZIP multi-fichiers téléchargé."});save();return true;
+     zip.file("index.html",html);
+     zip.file("README.md","# Produit Sahbi AI\n\nProduit généré et vérifié depuis le chat.");
+     const blob=await zip.generateAsync({type:"blob"});
+     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-product-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+     const done="🏁 Produit final prêt ✅\nJe l’ai généré, vérifié et téléchargé en ZIP sur ton appareil.";
+     (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
    }
- }catch(e){if(isGpuCrash(e)){await resetEngine();backendMode="cpu";await ensureCpuFallback();status.innerHTML="<b>Mode CPU actif.</b> Relance ta demande de construction.";}(progress._body||progress).textContent="❌ Je n’ai pas pu finaliser ce produit pendant le basculement. Relance ta demande: Sahbi AI est maintenant en mode CPU.";return false}
+
+   const spec=`Tu es Sahbi AI Product Builder Pro. Retourne UNIQUEMENT JSON {"summary":"...","run":"...","files":[{"path":"README.md","content":"..."},{"path":"...","content":"..."}]}.
+Crée un vrai projet multi-fichiers cohérent. Inclure README, architecture, commandes build/run et code initial utile.
+Pour un OS: produire un mini-OS éducatif réaliste et progressif; ne prétends pas livrer un OS de production complet.
+DEMANDE: ${userText}`;
+   const raw=await cloudChat([{role:"system",content:spec}],5000);
+   const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
+   let d=JSON.parse(m[0]);
+
+   let testReport="";
+   if(ownerToken && Array.isArray(d.files)){
+     const candidate=d.files.find(f=>/\.(py|js|c|cpp|rs|java)$/i.test(f.path||"") && String(f.content||"").length<=30000);
+     if(candidate){
+       const ext=(candidate.path.split(".").pop()||"").toLowerCase();
+       const lang=ext==="py"?"python":ext==="js"?"javascript":ext==="c"?"c":ext==="cpp"?"cpp":ext==="rs"?"rust":"java";
+       (progress._body||progress).textContent="🧪 Je compile/teste "+candidate.path+"…";
+       try{
+         const r=await fetch(SAHBI_API+"/api/build",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},body:JSON.stringify({language:lang,source:String(candidate.content||""),stdin:""})});
+         const t=await r.json().catch(()=>({}));
+         if(r.ok){
+           testReport="Build Lab: "+t.status+(t.compileOutput?"\n"+t.compileOutput:"")+(t.stderr?"\n"+t.stderr:"")+(t.stdout?"\n"+t.stdout:"");
+           if(!t.ok && (t.compileOutput||t.stderr)){
+             (progress._body||progress).textContent="🧯 Le build a trouvé une erreur, je corrige…";
+             const repair=`Corrige le projet à partir de cette erreur de build. Retourne UNIQUEMENT le même format JSON {"summary":"...","run":"...","files":[{"path":"...","content":"..."}]}.
+ERREUR:
+${testReport}
+PROJET:
+${JSON.stringify(d).slice(0,30000)}`;
+             const fixed=await cloudChat([{role:"system",content:repair}],5000);
+             const fm=fixed.match(/\{[\s\S]*\}/);if(fm)d=JSON.parse(fm[0]);
+           }
+         }
+       }catch{}
+     }
+   }
+
+   const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
+   const zip=new JSZip();
+   for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
+   if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Produit Sahbi AI\n\n"+(d.summary||"Projet généré"));
+   zip.file("SAHBI-DELIVERY.txt","Résumé:\n"+(d.summary||"")+"\n\nBuild / Run:\n"+(d.run||"Voir README")+(testReport?"\n\n"+testReport:""));
+   const blob=await zip.generateAsync({type:"blob"});
+   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-software-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+   const done="🏁 Projet final prêt ✅\nJe l’ai généré"+(testReport?", passé dans Build Lab":"")+" et téléchargé en ZIP.";
+   (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
+ }catch(e){
+   (progress._body||progress).textContent="❌ Construction interrompue : "+(e?.message||e);
+   return false;
+ }
 }
+
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
+if(looksLikeSecurityAudit(text)){prompt.value="";busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
+if(looksLikeCodeTest(text)&&attachedText){prompt.value="";busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
 if(looksLikeBuildRequest(text)){prompt.value="";busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
 let toolContext="";try{
 if(text==="/tasks"){toolContext=listTasks()}
@@ -440,5 +537,6 @@ $("#attach").onclick=()=>$("#fileInput").click();$("#webBtn").onclick=()=>{if(!p
 $("#fileInput").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;attachedName=f.name;$("#fileChip").textContent="📎 "+f.name+" — lecture en cours…";try{if(f.type.startsWith("image/")){$("#fileChip").textContent="🖼️ OCR de l’image…";const T=await import("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js");const r=await T.recognize(f,"fra+eng");attachedText="[Texte détecté dans l'image]\n"+(r.data?.text||"")}
 else if(f.name.toLowerCase().endsWith(".pdf")){const pdfjs=await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.min.mjs");pdfjs.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.8.69/pdf.worker.min.mjs";const pdf=await pdfjs.getDocument({data:await f.arrayBuffer()}).promise;let out="";for(let i=1;i<=Math.min(pdf.numPages,40);i++){const page=await pdf.getPage(i),tc=await page.getTextContent();out+="\n\n--- Page "+i+" ---\n"+tc.items.map(x=>x.str).join(" ")}attachedText=out}else attachedText=await f.text();$("#fileChip").textContent="📎 "+f.name+" · "+Math.round(attachedText.length/1000)+"k caractères prêts"}catch(err){attachedText="";$("#fileChip").textContent="Impossible de lire "+f.name}};
 $("#mic").onclick=()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert("Dictée non disponible.");return}const r=new SR();r.lang="fr-FR";r.onresult=e=>prompt.value+=(prompt.value?" ":"")+e.results[0][0].transcript;r.start()};
+const prefill=localStorage.getItem("sahbi_prefill")||"";if(prefill){localStorage.removeItem("sahbi_prefill");prompt.value=prefill;setTimeout(()=>prompt.focus(),100)};
 if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
 </script></body></html>
