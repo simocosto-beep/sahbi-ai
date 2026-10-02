@@ -165,6 +165,24 @@ async function cloudChat(messages,maxTokens=900){
     throw e;
   }finally{clearTimeout(timer)}
 }
+async function cloudBuildChat(messages,maxTokens=1600,timeoutMs=9000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const r=await fetch(SAHBI_API+"/api/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json",...(ownerToken?{"X-Sahbi-Owner-Token":ownerToken}:{})},
+      body:JSON.stringify({messages,max_tokens:maxTokens}),
+      signal:controller.signal
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(data?.message||data?.error||("HTTP "+r.status));
+    const text=String(data?.text||"").trim();
+    if(!text)throw new Error("Réponse vide");
+    return text;
+  }finally{clearTimeout(timer)}
+}
+
 async function ensureCloud(){
   backendMode="cloud";
   engine=cloudEngine;
@@ -580,45 +598,37 @@ function freeFallbackSoftware(userText){
  ]};
 }
 async function generateFinalProduct(userText){
- const progress=bubble("assistant","🏗️ Free Max · je prépare le projet…");
+ const progress=bubble("assistant","🏗️ Free Max · construction…");
  const chosen=/(syst[eè]me d'exploitation|operating system|kernel|bootloader|\bos\b)/i.test(userText)?"systems":/(backend|api|cli|logiciel|software|python|node|rust|c\+\+)/i.test(userText)?"software":"web";
  try{
    if(chosen==="web"){
      let d=null;
      try{
-       (progress._body||progress).textContent="🧠 Étape 1/2 · plan rapide…";
-       const plan=await cloudChat([{role:"system",content:"Donne un plan très court (max 8 lignes) pour construire cette app web. Réponds sans markdown inutile. Demande: "+userText}],500);
-       (progress._body||progress).textContent="⚙️ Étape 2/2 · génération…";
-       const spec="Retourne UNIQUEMENT un JSON compact {\"html\":\"...\",\"css\":\"...\",\"js\":\"...\"}.\nCrée une app web fonctionnelle et responsive à partir de ce plan:\n"+plan.slice(0,3500)+"\nDemande originale: "+userText+"\nReste sous 1800 tokens. Pas d'explication hors JSON.";
-       const raw=await cloudChat([{role:"system",content:spec}],1800);
-       const m=raw.match(/\{[\s\S]*\}/);
-       if(m)d=JSON.parse(m[0]);
+       const spec="Retourne UNIQUEMENT un JSON compact {\"html\":\"...\",\"css\":\"...\",\"js\":\"...\"}. Crée une app web fonctionnelle, responsive et simple pour cette demande: "+userText+". Les boutons doivent fonctionner. Reste sous 1600 tokens.";
+       const raw=await cloudBuildChat([{role:"system",content:spec}],1600,8000);
+       const m=raw.match(/\{[\s\S]*\}/);if(m)d=JSON.parse(m[0]);
      }catch{}
      if(!d){
-       (progress._body||progress).textContent="🛟 IA gratuite indisponible · génération du starter local…";
+       (progress._body||progress).textContent="🛟 Free Max · moteur gratuit lent, starter local…";
        d=freeFallbackWeb(userText);
      }
-     let issues=[];try{new Function(d.js||"")}catch(e){issues.push("JS: "+e.message)}
-     if(!/<[a-z][\s\S]*>/i.test(d.html||""))issues.push("HTML invalide");
-     if(issues.length)d=freeFallbackWeb(userText);
+     try{new Function(d.js||"")}catch{d=freeFallbackWeb(userText)}
+     if(!/<[a-z][\s\S]*>/i.test(d.html||""))d=freeFallbackWeb(userText);
 
      const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+(d.css||"")+'</style></head><body>'+(d.html||"")+'<script>'+String(d.js||"").replace(/<\/script>/g,"<\\/script>")+'<\/script></body></html>';
      downloadBlob(new Blob([html],{type:"text/html;charset=utf-8"}),"sahbi-free-max-app.html");
-     const done="🏁 Free Max · projet web prêt ✅\nFichier HTML autonome livré, sans dépendance externe.";
+     const done="🏁 Free Max · projet web prêt ✅\nFichier HTML autonome livré.";
      (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
    }
 
    let d=null;
    try{
-     (progress._body||progress).textContent="🧠 Étape 1/2 · architecture…";
-     const plan=await cloudChat([{role:"system",content:"Donne une architecture très courte pour ce projet logiciel. Max 10 lignes. Demande: "+userText}],550);
-     (progress._body||progress).textContent="⚙️ Étape 2/2 · fichiers…";
-     const spec="Retourne UNIQUEMENT JSON {\"summary\":\"...\",\"run\":\"...\",\"files\":[{\"path\":\"README.md\",\"content\":\"...\"},{\"path\":\"...\",\"content\":\"...\"}]}.\nProjet demandé: "+userText+"\nPlan: "+plan.slice(0,3500)+"\nCrée un petit projet cohérent et exécutable. Maximum 6 fichiers. Reste sous 2200 tokens.";
-     const raw=await cloudChat([{role:"system",content:spec}],2200);
+     const spec="Retourne UNIQUEMENT JSON {\"summary\":\"...\",\"run\":\"...\",\"files\":[{\"path\":\"README.md\",\"content\":\"...\"},{\"path\":\"...\",\"content\":\"...\"}]}. Crée un petit projet cohérent et exécutable pour: "+userText+". Maximum 6 fichiers. Reste sous 1900 tokens.";
+     const raw=await cloudBuildChat([{role:"system",content:spec}],1900,10000);
      const m=raw.match(/\{[\s\S]*\}/);if(m)d=JSON.parse(m[0]);
    }catch{}
    if(!d){
-     (progress._body||progress).textContent="🛟 IA gratuite indisponible · génération du starter local…";
+     (progress._body||progress).textContent="🛟 Free Max · moteur gratuit lent, starter local…";
      d=freeFallbackSoftware(userText);
    }
 
@@ -626,11 +636,23 @@ async function generateFinalProduct(userText){
    if(!files.some(x=>/README\.md$/i.test(x.path||"")))files.push({path:"README.md",content:"# Sahbi Free Max\n\n"+(d.summary||"Projet")});
    files.push({path:"SAHBI-DELIVERY.txt",content:"Résumé:\n"+(d.summary||"")+"\n\nRun:\n"+(d.run||"Voir README")});
    downloadBlob(makeTarBlob(files),"sahbi-free-max-software.tar");
-   const done="🏁 Free Max · projet logiciel prêt ✅\nArchive TAR livrée localement, sans CDN.";
+   const done="🏁 Free Max · projet logiciel prêt ✅\nArchive TAR livrée.";
    (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
  }catch(e){
-   (progress._body||progress).textContent="❌ Erreur locale inattendue : "+(e?.message||e);
-   return false;
+   const fallback=chosen==="web"?freeFallbackWeb(userText):freeFallbackSoftware(userText);
+   try{
+     if(chosen==="web"){
+       const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+fallback.css+'</style></head><body>'+fallback.html+'<script>'+fallback.js+'<\/script></body></html>';
+       downloadBlob(new Blob([html],{type:"text/html;charset=utf-8"}),"sahbi-free-max-app.html");
+     }else{
+       downloadBlob(makeTarBlob(fallback.files||[]),"sahbi-free-max-software.tar");
+     }
+     const done="🏁 Free Max · fallback local livré ✅";
+     (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
+   }catch(e2){
+     (progress._body||progress).textContent="❌ Erreur locale : "+(e2?.message||e2);
+     return false;
+   }
  }
 }
 
