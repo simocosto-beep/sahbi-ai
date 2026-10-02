@@ -617,7 +617,7 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
  let acc="";
  if(backendMode==="cloud"){
    (out._body||out).textContent="☁️ Sahbi AI réfléchit…";
-   acc=await cloudChat([{role:"system",content:sys},...history.slice(-16)],1200);
+   acc=await cloudChat([{role:"system",content:sys},...history.slice(-6)],900);
    (out._body||out).textContent=acc||"Réponse vide.";
  }else if(backendMode==="cpu"){
    (out._body||out).textContent="🧠 Mode CPU…";
