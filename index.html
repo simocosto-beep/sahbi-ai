@@ -38,7 +38,11 @@ main{padding:18px 14px 160px}
 .chat{display:flex;flex-direction:column;gap:12px}.msg{max-width:84%;padding:12px 14px;border-radius:16px;white-space:pre-wrap;line-height:1.5}.user{align-self:flex-end;background:linear-gradient(135deg,#5b21b6,#6d28d9)}.assistant{align-self:flex-start;background:#152038;border:1px solid var(--line)}
 .tts{font-size:11px;margin-top:8px;color:#9fb0c9;cursor:pointer}
 .composer{position:fixed;bottom:0;left:0;right:0;z-index:11;background:rgba(7,11,20,.92);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:9px 10px max(9px,env(safe-area-inset-bottom))}
-.composer-inner{max-width:1120px;margin:auto;display:grid;grid-template-columns:1fr auto;gap:8px}.inputwrap{display:flex;gap:7px;align-items:end;background:#111a2f;border:1px solid var(--line);border-radius:16px;padding:7px}.inputwrap textarea{width:100%;resize:none;max-height:180px;min-height:48px;border:0;outline:0;background:transparent;color:#fff;padding:8px}.inputwrap button{padding:9px 10px}
+.composer-inner{max-width:1120px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+.inputwrap{display:flex;gap:7px;align-items:center;min-width:0;background:#111a2f;border:1px solid var(--line);border-radius:16px;padding:7px}
+.inputwrap textarea{display:block;flex:1 1 auto;min-width:0;width:100%;resize:none;max-height:150px;min-height:52px;border:0;outline:0;background:transparent!important;color:#f8fafc!important;-webkit-text-fill-color:#f8fafc!important;caret-color:#fff;font-size:16px;line-height:1.35;padding:9px 6px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+.inputwrap textarea::placeholder{color:#94a3b8!important;-webkit-text-fill-color:#94a3b8!important;opacity:1}
+.inputwrap button{padding:9px 10px;flex:0 0 auto}
 .quick{max-width:1120px;margin:7px auto 0;display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.quick::-webkit-scrollbar{display:none}.quick button{white-space:nowrap;padding:6px 9px;font-size:12px;background:#0f1727}
 .drawer{position:fixed;inset:0;z-index:30;background:#000a;display:none}.drawer.show{display:block}.panel{position:absolute;right:0;top:0;bottom:0;width:min(94vw,470px);background:#0e1628;border-left:1px solid var(--line);padding:18px;overflow:auto;box-shadow:-20px 0 60px rgba(0,0,0,.35)}.panel textarea{width:100%;min-height:170px;border-radius:12px;background:#0a1221;color:#fff;border:1px solid var(--line);padding:10px}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.hint{font-size:12px;color:var(--muted)}
 .project{padding:10px;border:1px solid var(--line);border-radius:12px;margin:7px 0;background:#0b1323;display:flex;justify-content:space-between;gap:8px;align-items:center}
@@ -48,7 +52,14 @@ main{padding:18px 14px 160px}
 @media(max-width:640px){
   .header-inner{align-items:flex-start}.actions{justify-content:flex-end}.actions select{max-width:170px}.actions button:not(#load):not(#menuBtn){display:none}.mobile-menu{display:block}
   .hero{padding:16px}.hero h1{font-size:22px}.hero-top{display:block}.feature-grid{grid-template-columns:1fr 1fr;gap:8px}.feature{min-height:102px;padding:12px}.feature-desc{font-size:11px}
-  main{padding:12px 10px 175px}.msg{max-width:94%}.chat-card{border-radius:16px}
+  main{padding:12px 10px 185px}.msg{max-width:94%}.chat-card{border-radius:16px}
+  .composer{padding:8px 8px max(8px,env(safe-area-inset-bottom))}
+  .composer-inner{grid-template-columns:minmax(0,1fr) auto;gap:7px}
+  .inputwrap{gap:4px;padding:5px;border-radius:15px}
+  .inputwrap textarea{min-height:50px;max-height:116px;padding:8px 4px;font-size:16px;line-height:1.35}
+  .inputwrap button{width:42px;height:42px;padding:0;display:grid;place-items:center}
+  #send{min-width:96px;height:54px;padding:0 14px;align-self:end}
+  .quick{display:none}
   .mobile-nav{position:fixed;bottom:106px;left:10px;right:10px;z-index:12;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:rgba(11,17,30,.93);backdrop-filter:blur(16px);border:1px solid var(--line);padding:7px;border-radius:16px;box-shadow:var(--shadow)}
   .mobile-nav button{padding:8px 5px;font-size:11px;border-radius:10px;background:#10192a}
 }
@@ -107,6 +118,13 @@ main{padding:18px 14px 160px}
 </div></div>
 <script>
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
+function resizePrompt(){
+  prompt.style.height="auto";
+  prompt.style.height=Math.min(Math.max(prompt.scrollHeight,50),116)+"px";
+}
+prompt.addEventListener("input",resizePrompt);
+prompt.addEventListener("focus",()=>{resizePrompt();setTimeout(()=>prompt.scrollIntoView({block:"nearest"}),120)});
+
 let ownerToken=localStorage.getItem("sahbi_owner_token")||"";
 const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||1200);return {choices:[{message:{content:text}}]}}}}};
 let engine=cloudEngine,cpuPipe=null,backendMode="cloud",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
@@ -524,9 +542,9 @@ ${JSON.stringify(d).slice(0,30000)}`;
 }
 
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
-if(looksLikeSecurityAudit(text)){prompt.value="";busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
-if(looksLikeCodeTest(text)&&attachedText){prompt.value="";busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
-if(looksLikeBuildRequest(text)){prompt.value="";busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
+if(looksLikeSecurityAudit(text)){prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
+if(looksLikeCodeTest(text)&&attachedText){prompt.value="";resizePrompt();busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
+if(looksLikeBuildRequest(text)){prompt.value="";resizePrompt();busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
 let toolContext="";try{
 if(text==="/tasks"){toolContext=listTasks()}
 else if(text==="/skills"){toolContext=skillSummary()}
@@ -544,7 +562,7 @@ if(!toolContext && !text.startsWith("/")){const sk=findSkill(text);if(sk){sk.use
 if(agentMode && !toolContext && !text.startsWith("/") && /(météo|weather|température|convert|taux|euro|mad|usd|calcul|combien|recherche|cherche|web|internet|url|http|note|tâche|task)/i.test(text)){try{toolContext=await runToolChain(text)}catch{}}
 if(toolContext)text+="\n\n[Résultat d'outil vérifié]\n"+toolContext.slice(0,26000);
 $("#fileChip").textContent="";
-if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue et le registre de l'utilisateur. Adapte naturellement ton ton à sa façon d'écrire sans inventer de dialecte ni ajouter de traduction parasite. Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}${activeProjectContext()}`;try{
+if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";resizePrompt();send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue et le registre de l'utilisateur. Adapte naturellement ton ton à sa façon d'écrire sans inventer de dialecte ni ajouter de traduction parasite. Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}${activeProjectContext()}`;try{
  let acc="";
  if(backendMode==="cloud"){
    (out._body||out).textContent="☁️ Sahbi AI réfléchit…";
