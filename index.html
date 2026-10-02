@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>Sahbi AI</title><link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#111827"><title>Sahbi AI</title><link rel="manifest" href="./manifest.json"><script src="https://js.puter.com/v2/"></script>
 <style>
 :root{
   color-scheme:dark;
@@ -83,12 +83,12 @@ main{padding:18px 14px 160px}
       <div>
         <h1>Parle. Je m’occupe du reste.</h1>
         <p>Demande simplement ce que tu veux. Sahbi AI choisit ses outils, exécute les étapes et, pour un projet logiciel, te livre directement le produit final.</p>
-        <div class="hero-badges"><span class="badge ok">● Genius Auto</span><span class="badge">⚡ Agent automatique</span><span class="badge">🏁 Livraison finale</span></div>
+        <div class="hero-badges"><span class="badge ok">● Cloud Genius</span><span class="badge">☁️ Stable sans WebGPU</span><span class="badge">🏁 Livraison finale</span></div>
       </div>
     </div>
   </section>
 
-  <div class="status" id="status"><b>Mode gratuit :</b> commence avec Rapide 1B. Le premier chargement télécharge le modèle puis le garde en cache sur ton appareil.</div>
+  <div class="status" id="status"><b>Mode Cloud :</b> aucune IA lourde n'est chargée sur ton téléphone. Le service peut demander une autorisation Puter lors de la première utilisation.</div>
 
   <section class="chat-card">
     <div class="chat" id="chat"></div>
@@ -104,7 +104,7 @@ main{padding:18px 14px 160px}
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
+<div class="row"><button id="cloudModeBtn">☁️ Cloud Genius</button><button id="localModeBtn">📱 Local</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -115,7 +115,7 @@ main{padding:18px 14px 160px}
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
-let engine=null,cpuPipe=null,backendMode=(/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)?"cpu":"gpu"),busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
+let engine=null,cpuPipe=null,backendMode="cloud",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
 function chooseAutoModel(){
  const dm=Number(navigator.deviceMemory||4);
  if(dm>=12) return "Hermes-3-Llama-3.1-8B-q4f16_1-MLC";
@@ -126,6 +126,28 @@ function chooseAutoModel(){
 function isGpuCrash(e){
  const m=String(e?.message||e||"");
  return /GPUBuffer|mapAsync|device lost|WebGPU|unmapped before mapping/i.test(m);
+}
+async function cloudChat(messages, maxTokens=900){
+  if(!window.puter?.ai?.chat) throw new Error("Cloud AI indisponible");
+  const flat=messages.map(m=>{
+    const role=m.role==="system"?"SYSTEM":m.role==="user"?"USER":"ASSISTANT";
+    return role+": "+String(m.content||"");
+  }).join("\n\n")+"\n\nASSISTANT:";
+  const res=await puter.ai.chat(flat,{model:"openai/gpt-5.4-nano"});
+  if(typeof res==="string")return res;
+  if(typeof res?.message?.content==="string")return res.message.content;
+  if(Array.isArray(res?.message?.content))return res.message.content.map(x=>x?.text||"").join("");
+  if(typeof res?.text==="string")return res.text;
+  return String(res||"");
+}
+async function ensureCloud(){
+  if(!window.puter?.ai?.chat){
+    status.innerHTML="<b>Cloud indisponible.</b> Le SDK n'a pas chargé.";
+    return false;
+  }
+  backendMode="cloud";
+  status.innerHTML="<b>Prêt ✅</b> Mode Cloud Genius actif — pas de WebGPU, pas de modèle à télécharger.";
+  return true;
 }
 async function ensureCpuFallback(){
   if(cpuPipe)return true;
@@ -176,9 +198,11 @@ const fw=$("#featureWeb");if(fw)fw.onclick=()=>{prompt.value="/web ";prompt.focu
 const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
+$("#cloudModeBtn").onclick=async()=>{await resetEngine();cpuPipe=null;backendMode="cloud";$("#model").innerHTML='<option selected>Cloud Genius · stable</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
+$("#localModeBtn").onclick=async()=>{await resetEngine();backendMode="cpu";$("#model").innerHTML='<option selected>Local CPU · 135M</option>';$("#model").disabled=true;await ensureCpuFallback();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
-if(backendMode==="cpu"){
-  $("#model").innerHTML='<option selected>Mobile CPU · 135M</option>';
+if(backendMode==="cloud"){
+  $("#model").innerHTML='<option selected>Cloud Genius · stable</option>';
   $("#model").disabled=true;
 }
 function render(){
@@ -187,11 +211,14 @@ function render(){
  chat.innerHTML="";
  if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
  for(const m of history)bubble(m.role,m.content)
-}render();
+}render();ensureCloud();
 async function ensureEngine(){
+  if(backendMode==="cloud"){
+    $("#model").disabled=true;
+    return await ensureCloud();
+  }
   if(backendMode==="cpu"){
     $("#model").disabled=true;
-    status.innerHTML="<b>Mode mobile :</b> je démarre directement en CPU/WASM pour éviter les crashs WebGPU.";
     return await ensureCpuFallback();
   }
   if(engine)return true;
@@ -265,7 +292,8 @@ async function generateFinalProduct(userText){
 Construis un produit web complet, responsive, propre et fonctionnel selon la demande. Les boutons doivent fonctionner. Utilise localStorage si une persistance locale suffit. Pas d'explication hors JSON.
 DEMANDE: ${userText}`;
      let raw="";
-     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,5000)}],500);
+     if(backendMode==="cloud") raw=await cloudChat([{role:"system",content:spec}],4000);
+     else if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,5000)}],500);
      else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.35,max_tokens:7000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
      let d=JSON.parse(m[0]);
      // basic self-check + one repair pass
@@ -293,7 +321,8 @@ Crée un vrai projet multi-fichiers cohérent et progressif. Inclure README, arc
 Pour un OS: produire un OS éducatif minimal réaliste, pas prétendre livrer un OS de production complet.
 DEMANDE: ${userText}`;
      let raw="";
-     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,6000)}],600);
+     if(backendMode==="cloud") raw=await cloudChat([{role:"system",content:spec}],5000);
+     else if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,6000)}],600);
      else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.3,max_tokens:8000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
      const d=JSON.parse(m[0]);const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();
      for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
@@ -326,7 +355,11 @@ if(toolContext)text+="\n\n[Résultat d'outil vérifié]\n"+toolContext.slice(0,2
 $("#fileChip").textContent="";
 if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue de l'utilisateur (français, darija, arabe, anglais). Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}`;try{
  let acc="";
- if(backendMode==="cpu"){
+ if(backendMode==="cloud"){
+   (out._body||out).textContent="☁️ Sahbi AI réfléchit…";
+   acc=await cloudChat([{role:"system",content:sys},...history.slice(-16)],1200);
+   (out._body||out).textContent=acc||"Réponse vide.";
+ }else if(backendMode==="cpu"){
    (out._body||out).textContent="🧠 Mode CPU…";
    acc=await cpuChat([{role:"system",content:sys.slice(0,1800)},...history.slice(-4)],160);
    (out._body||out).textContent=acc||"Réponse vide.";
