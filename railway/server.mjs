@@ -174,13 +174,12 @@ async function callWithFallback(messages, owner, maxTokens) {
   const builderLike = maxTokens >= 3000;
   const candidates = builderLike
     ? [
-        { model: AI_MODEL, timeout: 10000 },
-        { model: "openrouter/free", timeout: 14000 },
-        { model: "stealth/space-bunny-alpha", timeout: 8000 },
+        { model: "openrouter/free", timeout: 16000 },
+        { model: AI_MODEL, timeout: 9000 },
       ]
     : [
-        { model: AI_MODEL, timeout: 8000 },
-        { model: "stealth/space-bunny-alpha", timeout: 9000 },
+        { model: "openrouter/free", timeout: 10000 },
+        { model: AI_MODEL, timeout: 6000 },
       ];
 
   let lastError;
