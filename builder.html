@@ -20,7 +20,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
 </style>
 </head><body>
-<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 Projet ZIP</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 ZIP courant</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
 <div class="grid">
 <section class="side">
   <div class="label">Modèle</div>
@@ -43,6 +43,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
   <div class="row">
     <button id="build" class="primary" disabled>⚡ Construire</button>
     <button id="autopilot" disabled>🧠 Autopilot</button>
+    <button id="ship" disabled>🏁 Produit final</button>
     <button id="test" disabled>🧪 Build & Test</button>
     <button id="improve" disabled>✨ Améliorer</button>
     <button id="fix" disabled>🧯 Corriger</button>
@@ -50,6 +51,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
   <div class="status" id="status">Charge le modèle. Tout le code est généré sur ton appareil.</div>
 <div class="status" id="plan" style="display:none"></div>
 <div class="status" id="testlog" style="display:none;white-space:pre-wrap"></div>
+<div class="status" id="shiplog" style="display:none;white-space:pre-wrap"></div>
   <div class="projects">
     <div class="label">Projets locaux</div>
     <div id="projectList"></div>
@@ -73,7 +75,7 @@ $("#editor").oninput=e=>{files[current]=e.target.value;preview()};
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{files[current]=$("#editor").value;current=b.dataset.tab;show()});
 show();if(activeProject){const p=JSON.parse(localStorage.getItem("sahbi_projects")||"{}")[activeProject];if(p){$("#projectName").value=activeProject;$("#brief").value=(p.memory||"")?("Contexte projet "+activeProject+":\n"+p.memory):$("#brief").value;$("#status").textContent="Projet actif: "+activeProject+" — contexte chargé depuis Project Hub."}}
 
-$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#autopilot").disabled=$("#test").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
+$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#autopilot").disabled=$("#ship").disabled=$("#test").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
 
 function extract(raw){
  const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error("Réponse de code invalide");
@@ -201,6 +203,51 @@ $("#autopilot").onclick=async()=>{if(!engine)return;$("#autopilot").disabled=tru
  await ask("build");
  for(let i=1;i<=3;i++){const issues=collectIssues();if(!issues.length){$("#status").textContent="Autopilot terminé ✅ — aucun problème structurel détecté après "+i+" passe(s).";break}$("#status").textContent="Autopilot passe "+i+"/3 — "+issues.join(" · ");await repairFromIssues(issues);if(i===3)$("#status").textContent="Autopilot terminé avec vérifications. Consulte Build & Test pour le rapport final."}
 }catch(e){$("#status").textContent="Autopilot erreur: "+(e.message||e)}finally{$("#autopilot").disabled=false}};
+async function packageFinalProduct(){
+ const chosen=$("#projectType").value==="auto"?detectType($("#brief").value):$("#projectType").value;
+ const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
+ const zip=new JSZip();
+ const productName=($("#projectName").value.trim()||"sahbi-product").replace(/[^a-z0-9-_]+/gi,"-").toLowerCase();
+ if(chosen==="web"){
+   const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${productName}</title><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;
+   zip.file("index.html",html);
+   zip.file("README.md","# "+productName+"\n\nProduit final généré par Sahbi AI Builder.\n\nOuvre index.html ou déploie le dossier sur GitHub Pages / Cloudflare Pages.");
+ }else{
+   for(const f of projectFiles)zip.file(f.path,f.content||"");
+   if(!projectFiles.some(f=>/README\.md$/i.test(f.path)))zip.file("README.md","# "+productName+"\n\nProduit final généré par Sahbi AI Builder.");
+ }
+ zip.file("SAHBI-DELIVERY.txt",
+`SAHBI AI — LIVRAISON PRODUIT
+Nom: ${productName}
+Type: ${chosen}
+Date: ${new Date().toISOString()}
+Autopilot: effectué
+Vérifications locales: effectuées
+Important: pour logiciels natifs, backends ou OS, compiler/tester aussi dans l'environnement cible avant usage production.
+`);
+ const blob=await zip.generateAsync({type:"blob"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=productName+"-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+ return productName+"-final.zip";
+}
+async function shipFinal(){
+ if(!engine)return;
+ const box=$("#shiplog");box.style.display="block";$("#ship").disabled=true;
+ try{
+   box.textContent="1/5 — Construction du produit…";
+   await ask("build");
+   box.textContent="2/5 — Vérification…";
+   let issues=collectIssues();
+   for(let i=0;i<3&&issues.length;i++){box.textContent="3/5 — Correction automatique passe "+(i+1)+"/3…\n"+issues.join("\n");await repairFromIssues(issues);issues=collectIssues()}
+   box.textContent="4/5 — Packaging final…";
+   const filename=await packageFinalProduct();
+   box.textContent="5/5 — Produit final prêt ✅\n\nFichier livré: "+filename+"\n\nLe ZIP contient le projet final et les instructions de lancement/déploiement.";
+   $("#status").textContent="🏁 Livraison terminée — ton produit final a été téléchargé.";
+ }catch(e){
+   box.textContent="Erreur pendant la livraison: "+(e.message||e);
+ }finally{$("#ship").disabled=false}
+}
+$("#ship").onclick=shipFinal;
+
 function projects(){return JSON.parse(localStorage.getItem("sahbi_builder_projects")||"{}")}
 function renderProjects(){const p=projects(),box=$("#projectList");box.innerHTML="";Object.keys(p).forEach(name=>{const d=document.createElement("div");d.className="project";const n=document.createElement("span");n.textContent=name;n.style.cursor="pointer";n.onclick=()=>{files=p[name].files;$("#brief").value=p[name].brief||"";$("#projectName").value=name;current="html";show()};const del=document.createElement("button");del.textContent="🗑";del.className="danger";del.onclick=()=>{const q=projects();delete q[name];localStorage.setItem("sahbi_builder_projects",JSON.stringify(q));renderProjects()};d.append(n,del);box.appendChild(d)})}
 $("#save").onclick=()=>{const name=$("#projectName").value.trim()||("Projet "+new Date().toLocaleString());const p=projects();p[name]={files,brief:$("#brief").value,updated:new Date().toISOString()};localStorage.setItem("sahbi_builder_projects",JSON.stringify(p));$("#projectName").value=name;renderProjects();$("#status").textContent="Projet sauvegardé localement ✅"};renderProjects();
