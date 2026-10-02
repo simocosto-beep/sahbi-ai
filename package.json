@@ -1,8 +1,12 @@
 {
-  "name":"sahbi-ai-cloud-builder",
-  "version":"1.0.0",
-  "private":true,
-  "type":"module",
-  "scripts":{"start":"node server.mjs"},
-  "engines":{"node":">=20"}
+  "name": "sahbi-ai",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ai": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
