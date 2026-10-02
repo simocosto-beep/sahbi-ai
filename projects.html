@@ -1,0 +1,37 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1020"><title>Sahbi AI · Projets</title>
+<style>
+:root{color-scheme:dark;--bg:#070b14;--panel:#0f172a;--line:rgba(255,255,255,.08);--muted:#94a3b8;--text:#f8fafc;--a:#7c3aed}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 0 -10%,rgba(124,58,237,.2),transparent 60%),#070b14;color:var(--text);font-family:Inter,system-ui,sans-serif}
+header{position:sticky;top:0;background:#070b14e8;backdrop-filter:blur(16px);border-bottom:1px solid var(--line);padding:12px 14px;z-index:4}.head{max-width:1100px;margin:auto;display:flex;justify-content:space-between;gap:10px;align-items:center}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button,input,textarea{font:inherit}button{border:1px solid var(--line);background:#172036;color:#fff;border-radius:11px;padding:9px 11px;cursor:pointer}.primary{background:var(--a);border-color:transparent}
+main{max-width:1100px;margin:auto;padding:18px 14px}.new{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:14px}input,textarea{background:#0d1527;color:#fff;border:1px solid var(--line);border-radius:11px;padding:10px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.card{border:1px solid var(--line);background:linear-gradient(180deg,#10192b,#0c1423);border-radius:16px;padding:14px;min-height:180px}.card h3{margin:0 0 7px}.meta{font-size:12px;color:var(--muted)}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0}.stat{background:#0b1323;border:1px solid var(--line);padding:8px;border-radius:10px;text-align:center;font-size:12px}
+.panel{margin-top:12px;display:none;border:1px solid var(--line);border-radius:14px;padding:12px;background:#0c1423}.panel.show{display:block}.panel textarea{width:100%;min-height:110px}.tasks{margin-top:8px}.task{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){.grid{grid-template-columns:1fr}.new{grid-template-columns:1fr}.head{align-items:flex-start}}
+</style></head><body>
+<header><div class="head"><div><b>📁 Sahbi AI Project Hub</b><div class="meta">Mémoire, notes et tâches séparées par projet</div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button onclick="location.href='./builder.html'">🛠️ Builder</button></div></div></header>
+<main>
+<div class="new"><input id="name" placeholder="Nom du nouveau projet"><button id="create" class="primary">＋ Créer</button></div>
+<div id="grid" class="grid"></div>
+<div id="panel" class="panel">
+  <div class="row" style="justify-content:space-between"><h2 id="title"></h2><button id="close">✕</button></div>
+  <div class="meta">Mémoire du projet</div><textarea id="memory" placeholder="Objectifs, décisions, contexte important…"></textarea>
+  <div class="row"><button id="save" class="primary">Enregistrer</button><button id="toBuilder">Ouvrir Builder</button></div>
+  <hr style="border-color:var(--line)"><div class="meta">Ajouter une tâche</div>
+  <div class="row"><input id="taskText" placeholder="Nouvelle tâche" style="flex:1"><button id="addTask">＋</button></div>
+  <div id="tasks" class="tasks"></div>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);let current=null;
+const get=()=>JSON.parse(localStorage.getItem("sahbi_projects")||"{}"),set=x=>localStorage.setItem("sahbi_projects",JSON.stringify(x));
+function render(){const p=get(),g=$("#grid");g.innerHTML="";Object.entries(p).forEach(([name,x])=>{const d=document.createElement("div");d.className="card";d.innerHTML="<h3>"+name.replace(/[<>]/g,"")+"</h3><div class='meta'>Mis à jour "+new Date(x.updated||x.created).toLocaleString()+"</div><div class='stats'><div class='stat'>📝<br>"+(x.notes||0)+" notes</div><div class='stat'>✅<br>"+(x.tasks||[]).filter(t=>t.done).length+"/"+(x.tasks||[]).length+"</div><div class='stat'>🧠<br>"+((x.memory||"").length>0?"mémoire":"vide")+"</div></div>";const b=document.createElement("button");b.textContent="Ouvrir";b.onclick=()=>open(name);d.appendChild(b);g.appendChild(d)});if(!Object.keys(p).length)g.innerHTML="<p class='meta'>Aucun projet. Crée ton premier espace.</p>"}
+function open(name){current=name;const x=get()[name];$("#title").textContent=name;$("#memory").value=x.memory||"";$("#panel").classList.add("show");renderTasks()}
+function renderTasks(){const x=get()[current],box=$("#tasks");box.innerHTML="";(x.tasks||[]).forEach((t,i)=>{const d=document.createElement("div");d.className="task";const cb=document.createElement("input");cb.type="checkbox";cb.checked=t.done;cb.onchange=()=>{const p=get();p[current].tasks[i].done=cb.checked;p[current].updated=new Date().toISOString();set(p);render();renderTasks()};const s=document.createElement("span");s.textContent=t.text;s.style.flex="1";const del=document.createElement("button");del.textContent="🗑";del.onclick=()=>{const p=get();p[current].tasks.splice(i,1);set(p);render();renderTasks()};d.append(cb,s,del);box.appendChild(d)})}
+$("#create").onclick=()=>{const n=$("#name").value.trim();if(!n)return;const p=get();if(!p[n])p[n]={created:new Date().toISOString(),updated:new Date().toISOString(),memory:"",tasks:[],notes:0};set(p);$("#name").value="";render();open(n)};
+$("#save").onclick=()=>{if(!current)return;const p=get();p[current].memory=$("#memory").value;p[current].updated=new Date().toISOString();set(p);render()};
+$("#addTask").onclick=()=>{const t=$("#taskText").value.trim();if(!t||!current)return;const p=get();p[current].tasks=p[current].tasks||[];p[current].tasks.push({text:t,done:false});p[current].updated=new Date().toISOString();set(p);$("#taskText").value="";render();renderTasks()};
+$("#close").onclick=()=>$("#panel").classList.remove("show");
+$("#toBuilder").onclick=()=>{if(!current)return;localStorage.setItem("sahbi_active_project",current);location.href="./builder.html"};
+render();
+</script></body></html>
