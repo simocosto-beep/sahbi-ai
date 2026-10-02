@@ -33,8 +33,11 @@ function json(res, status, body, origin="*") {
 
 function allowedOrigin(req) {
   const origin = String(req.headers.origin || "");
-  if (!origin) return "";
   const host = String(req.headers.host || "");
+  if (!origin) {
+    if (req.method === "GET" && host) return "https://" + host;
+    return "";
+  }
   if (origin === ALLOWED_ORIGIN) return origin;
   if (host && (origin === "https://" + host || origin === "http://" + host)) return origin;
   if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) return origin;
