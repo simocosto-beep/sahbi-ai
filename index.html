@@ -511,6 +511,41 @@ function looksLikeBuildRequest(t){
  const product=/(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme|scanner|script|bot|dashboard)/i;
  return creation.test(s) && product.test(s);
 }
+function downloadBlob(blob,name){
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download=name;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+function tarOctal(n,len){
+ const s=Math.max(0,Number(n)||0).toString(8);
+ return s.padStart(len-1,"0")+"\0";
+}
+function tarHeader(name,size){
+ const h=new Uint8Array(512),enc=new TextEncoder();
+ const write=(off,len,str)=>h.set(enc.encode(String(str).slice(0,len)),off);
+ write(0,100,name);write(100,8,"0000644\0");write(108,8,"0000000\0");write(116,8,"0000000\0");
+ write(124,12,tarOctal(size,12));write(136,12,tarOctal(Math.floor(Date.now()/1000),12));
+ for(let i=148;i<156;i++)h[i]=32;
+ h[156]="0".charCodeAt(0);write(257,6,"ustar\0");write(263,2,"00");
+ let sum=0;for(const b of h)sum+=b;
+ const chk=sum.toString(8).padStart(6,"0")+"\0 ";
+ write(148,8,chk);return h;
+}
+function makeTarBlob(files){
+ const enc=new TextEncoder(),parts=[];
+ for(const f of files){
+   const name=String(f.path||"file.txt").replace(/^\/+|\.\.\//g,"").slice(0,99);
+   const data=enc.encode(String(f.content||""));
+   parts.push(tarHeader(name,data.length),data);
+   const pad=(512-(data.length%512))%512;if(pad)parts.push(new Uint8Array(pad));
+ }
+ parts.push(new Uint8Array(1024));
+ return new Blob(parts,{type:"application/x-tar"});
+}
 function freeFallbackWeb(userText){
  const safe=String(userText||"").replace(/[<>]/g,"").slice(0,240);
  return {
@@ -567,14 +602,9 @@ async function generateFinalProduct(userText){
      if(!/<[a-z][\s\S]*>/i.test(d.html||""))issues.push("HTML invalide");
      if(issues.length)d=freeFallbackWeb(userText);
 
-     const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
-     const zip=new JSZip();
      const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+(d.css||"")+'</style></head><body>'+(d.html||"")+'<script>'+String(d.js||"").replace(/<\/script>/g,"<\\/script>")+'<\/script></body></html>';
-     zip.file("index.html",html);
-     zip.file("README.md","# Produit Sahbi Free Max\n\nDemande: "+userText+"\n");
-     const blob=await zip.generateAsync({type:"blob"});
-     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-free-max-web.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-     const done="🏁 Free Max · projet web prêt ✅\nZIP livré même si le modèle gratuit a décroché.";
+     downloadBlob(new Blob([html],{type:"text/html;charset=utf-8"}),"sahbi-free-max-app.html");
+     const done="🏁 Free Max · projet web prêt ✅\nFichier HTML autonome livré, sans dépendance externe.";
      (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
    }
 
@@ -592,14 +622,11 @@ async function generateFinalProduct(userText){
      d=freeFallbackSoftware(userText);
    }
 
-   const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
-   const zip=new JSZip();
-   for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
-   if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Sahbi Free Max\n\n"+(d.summary||"Projet"));
-   zip.file("SAHBI-DELIVERY.txt","Résumé:\n"+(d.summary||"")+"\n\nRun:\n"+(d.run||"Voir README"));
-   const blob=await zip.generateAsync({type:"blob"});
-   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-free-max-software.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-   const done="🏁 Free Max · projet logiciel prêt ✅\nZIP livré.";
+   const files=(d.files||[]).filter(file=>file.path&&!file.path.includes("../")&&!file.path.startsWith("/")).map(file=>({path:file.path,content:file.content||""}));
+   if(!files.some(x=>/README\.md$/i.test(x.path||"")))files.push({path:"README.md",content:"# Sahbi Free Max\n\n"+(d.summary||"Projet")});
+   files.push({path:"SAHBI-DELIVERY.txt",content:"Résumé:\n"+(d.summary||"")+"\n\nRun:\n"+(d.run||"Voir README")});
+   downloadBlob(makeTarBlob(files),"sahbi-free-max-software.tar");
+   const done="🏁 Free Max · projet logiciel prêt ✅\nArchive TAR livrée localement, sans CDN.";
    (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
  }catch(e){
    (progress._body||progress).textContent="❌ Erreur locale inattendue : "+(e?.message||e);
