@@ -607,7 +607,7 @@ const server = http.createServer(async (req, res) => {
 
     try {
       const body = await readBody(req);
-      const raw = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
+      const raw = Array.isArray(body.messages) ? body.messages.slice(-8) : [];
       if (!raw.length) return json(res, 400, { error: "messages_required" }, origin);
 
       const owner = verifyOwnerToken(ownerTokenFrom(req));
@@ -620,10 +620,10 @@ const server = http.createServer(async (req, res) => {
         }, origin);
       }
 
-      const requestedMaxTokens = Math.max(1, Math.min(Number(body.max_tokens || 1400), owner ? 8000 : 5000));
+      const requestedMaxTokens = Math.max(1, Math.min(Number(body.max_tokens || 1000), owner ? 5000 : 3000));
       const messages = raw.map(m => ({
         role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-        content: String(m.content || "").slice(0, 20000),
+        content: String(m.content || "").slice(0, 10000),
       }));
 
       messages.unshift({
