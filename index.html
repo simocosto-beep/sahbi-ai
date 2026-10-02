@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>Sahbi AI</title><link rel="manifest" href="./manifest.json"><script src="https://js.puter.com/v2/"></script>
+<meta name="theme-color" content="#111827"><title>Sahbi AI</title><link rel="manifest" href="./manifest.json">
 <style>
 :root{
   color-scheme:dark;
@@ -59,7 +59,7 @@ main{padding:18px 14px 160px}
   <div class="header-inner">
     <div class="brand"><div class="logo">S</div><div class="brand-text"><div class="brand-title">Sahbi AI</div><div class="sub">Ton assistant personnel · cloud-first</div></div></div>
     <div class="actions">
-      <select id="model" title="Modèle" disabled><option value="cloud" selected>Cloud Genius · stable</option></select>
+      <select id="model" title="Modèle" disabled><option value="cloud" selected>Sahbi Cloud · Railway</option></select>
       <button id="menuBtn">☰</button>
       <button id="load" style="display:none">Charger l’IA</button>
       <button id="agentToggle" style="display:none">⚡ Agent ON</button>
@@ -76,12 +76,12 @@ main{padding:18px 14px 160px}
       <div>
         <h1>Parle. Je m’occupe du reste.</h1>
         <p>Demande simplement ce que tu veux. Sahbi AI choisit ses outils, exécute les étapes et, pour un projet logiciel, te livre directement le produit final.</p>
-        <div class="hero-badges"><span class="badge ok">● Cloud Genius</span><span class="badge">☁️ Stable sans WebGPU</span><span class="badge">🏁 Livraison finale</span></div>
+        <div class="hero-badges"><span class="badge ok">● Sahbi Cloud</span><span class="badge">☁️ Railway + OpenRouter</span><span class="badge">🏁 Livraison finale</span></div>
       </div>
     </div>
   </section>
 
-  <div class="status" id="status"><b>Mode Cloud :</b> aucune IA lourde n'est chargée sur ton téléphone. Une session invitée temporaire sera créée automatiquement à la première demande.</div>
+  <div class="status" id="status"><b>Sahbi Cloud :</b> aucune IA lourde sur ton téléphone, aucun compte externe à créer. Le chat passe par le backend Sahbi sur Railway.</div>
 
   <section class="chat-card">
     <div class="chat" id="chat"></div>
@@ -97,7 +97,7 @@ main{padding:18px 14px 160px}
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button id="cloudModeBtn">☁️ Cloud Genius</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
+<div class="row"><button id="cloudModeBtn">☁️ Sahbi Cloud</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -120,42 +120,31 @@ function isGpuCrash(e){
  const m=String(e?.message||e||"");
  return /GPUBuffer|mapAsync|device lost|WebGPU|unmapped before mapping/i.test(m);
 }
-async function ensureGuestSession(){
-  if(!window.puter?.auth||!window.puter?.ai?.chat) throw new Error("Cloud Puter indisponible");
-  if(typeof puter.auth.isSignedIn==="function" && puter.auth.isSignedIn()) return true;
-  status.innerHTML="<b>Première utilisation…</b> création d’une session invitée temporaire.";
+const SAHBI_API="https://sahbi-api-production.up.railway.app";
+async function cloudChat(messages,maxTokens=900){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),90000);
   try{
-    await puter.auth.signIn({attempt_temp_user_creation:true});
-    status.innerHTML="<b>Prêt ✅</b> Session invitée active — aucun compte permanent requis.";
-    return true;
+    const r=await fetch(SAHBI_API+"/api/chat",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({messages,max_tokens:maxTokens}),
+      signal:controller.signal
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(data?.message||data?.error||("Erreur cloud HTTP "+r.status));
+    const text=String(data?.text||"").trim();
+    if(!text) throw new Error("Réponse IA vide");
+    return text;
   }catch(e){
-    const code=e?.error||e?.code||"";
-    if(code==="popup_blocked") throw new Error("Le navigateur a bloqué la session invitée. Autorise les pop-ups pour Sahbi AI puis réessaie.");
-    if(code==="auth_window_closed") throw new Error("Session invitée annulée.");
-    throw new Error(e?.msg||e?.message||"Impossible de créer la session invitée.");
-  }
-}
-async function cloudChat(messages, maxTokens=900){
-  await ensureGuestSession();
-  if(!window.puter?.ai?.chat) throw new Error("Cloud AI indisponible");
-  const flat=messages.map(m=>{
-    const role=m.role==="system"?"SYSTEM":m.role==="user"?"USER":"ASSISTANT";
-    return role+": "+String(m.content||"");
-  }).join("\n\n")+"\n\nASSISTANT:";
-  const res=await puter.ai.chat(flat,{model:"openai/gpt-5.4-nano"});
-  if(typeof res==="string")return res;
-  if(typeof res?.message?.content==="string")return res.message.content;
-  if(Array.isArray(res?.message?.content))return res.message.content.map(x=>x?.text||"").join("");
-  if(typeof res?.text==="string")return res.text;
-  return String(res||"");
+    if(e?.name==="AbortError") throw new Error("Le cloud Sahbi met trop de temps à répondre. Réessaie.");
+    throw e;
+  }finally{clearTimeout(timer)}
 }
 async function ensureCloud(){
-  if(!window.puter?.ai?.chat){
-    status.innerHTML="<b>Cloud indisponible.</b> Le SDK n'a pas chargé.";
-    return false;
-  }
   backendMode="cloud";
-  status.innerHTML="<b>Prêt ✅</b> Mode Cloud Genius actif — pas de WebGPU, pas de modèle à télécharger.";
+  engine=cloudEngine;
+  status.innerHTML="<b>Prêt ✅</b> Sahbi Cloud actif — Railway + OpenRouter, aucun compte visiteur requis.";
   return true;
 }
 async function ensureCpuFallback(){
@@ -207,10 +196,10 @@ const fw=$("#featureWeb");if(fw)fw.onclick=()=>{prompt.value="/web ";prompt.focu
 const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
-$("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Cloud Genius · stable</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
+$("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Sahbi Cloud · Railway</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 if(backendMode==="cloud"){
-  $("#model").innerHTML='<option selected>Cloud Genius · stable</option>';
+  $("#model").innerHTML='<option selected>Sahbi Cloud · Railway</option>';
   $("#model").disabled=true;
 }
 function render(){

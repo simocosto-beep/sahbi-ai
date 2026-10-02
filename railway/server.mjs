@@ -66,7 +66,7 @@ const server = http.createServer(async (req, res) => {
 
     try {
       const body = await readBody(req);
-      const messages = Array.isArray(body.messages) ? body.messages.slice(-20) : [];
+      const messages = Array.isArray(body.messages) ? body.messages.slice(-20) : [];\n      const requestedMaxTokens = Math.max(1, Math.min(Number(body.max_tokens || 1800), 8000));
       if (!messages.length) return json(res, 400, { error: "messages_required" }, origin);
 
       const normalized = messages.map(m => ({
@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
           model: AI_MODEL,
           messages: normalized,
           temperature: 0.5,
-          max_tokens: 1800,
+          max_tokens: requestedMaxTokens,
           stream: false,
         }),
       });
