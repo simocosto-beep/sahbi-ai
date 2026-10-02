@@ -20,7 +20,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
 </style>
 </head><body>
-<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 Projet ZIP</button></div></header>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 Projet ZIP</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
 <div class="grid">
 <section class="side">
   <div class="label">Modèle</div>
@@ -42,6 +42,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
   <textarea id="brief" placeholder="Ex: Une app de petites annonces au Maroc avec recherche, cartes, favoris et design premium…"></textarea>
   <div class="row">
     <button id="build" class="primary" disabled>⚡ Construire</button>
+    <button id="autopilot" disabled>🧠 Autopilot</button>
     <button id="test" disabled>🧪 Build & Test</button>
     <button id="improve" disabled>✨ Améliorer</button>
     <button id="fix" disabled>🧯 Corriger</button>
@@ -64,15 +65,15 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 const $=s=>document.querySelector(s);
-let engine=null,current="html",projectFiles=[];
+let engine=null,current="html",projectFiles=[],activeProject=localStorage.getItem("sahbi_active_project")||"";
 let files={html:`<main style="font-family:system-ui;padding:40px"><h1>Sahbi AI Builder</h1><p>Décris ton application puis clique Construire.</p></main>`,css:"",js:""};
 function show(){ $("#editor").value=files[current]; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===current)); preview();}
 function preview(){const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;$("#frame").srcdoc=doc}
 $("#editor").oninput=e=>{files[current]=e.target.value;preview()};
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{files[current]=$("#editor").value;current=b.dataset.tab;show()});
-show();
+show();if(activeProject){const p=JSON.parse(localStorage.getItem("sahbi_projects")||"{}")[activeProject];if(p){$("#projectName").value=activeProject;$("#brief").value=(p.memory||"")?("Contexte projet "+activeProject+":\n"+p.memory):$("#brief").value;$("#status").textContent="Projet actif: "+activeProject+" — contexte chargé depuis Project Hub."}}
 
-$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#test").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
+$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#autopilot").disabled=$("#test").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
 
 function extract(raw){
  const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error("Réponse de code invalide");
@@ -129,6 +130,45 @@ function basicStaticChecks(){
  if(/fetch\(["']http:\/\//i.test(files.js))issues.push("JS: appel HTTP non sécurisé détecté.");
  return issues;
 }
+function collectIssues(){
+ const chosen=$("#projectType").value==="auto"?detectType($("#brief").value):$("#projectType").value;
+ const issues=[];
+ if(chosen==="web"){
+   if(files.html && !/<[a-z][\s\S]*>/i.test(files.html))issues.push("HTML invalide ou vide");
+   try{new Function(files.js||"");}catch(e){issues.push("Erreur JS: "+e.message)}
+   const ids=[...files.html.matchAll(/id=["']([^"']+)["']/g)].map(m=>m[1]);
+   const dup=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];
+   if(dup.length)issues.push("IDs HTML dupliqués: "+dup.join(", "));
+   if(/fetch\(["']http:\/\//i.test(files.js))issues.push("Appel HTTP non sécurisé");
+ } else {
+   const paths=projectFiles.map(f=>f.path);
+   if(!paths.length)issues.push("Aucun fichier généré");
+   if(!paths.some(p=>/README\.md$/i.test(p)))issues.push("README.md manquant");
+   if(paths.some(p=>p.startsWith("/")||p.includes("../")))issues.push("Chemins de fichiers dangereux");
+   if(chosen==="systems"&&!paths.some(p=>/Cargo\.toml$|Makefile$|CMakeLists\.txt$|\.c$|\.rs$/i.test(p)))issues.push("Projet système sans source/build reconnu");
+ }
+ return issues;
+}
+async function repairFromIssues(issues){
+ const chosen=$("#projectType").value==="auto"?detectType($("#brief").value):$("#projectType").value;
+ if(!issues.length)return true;
+ $("#status").textContent="Autopilot corrige: "+issues.join(" · ");
+ if(chosen==="web"){
+   const spec=`Tu es un ingénieur senior. Corrige uniquement les problèmes listés. Retourne UNIQUEMENT JSON {"html":"...","css":"...","js":"..."}.
+PROBLÈMES: ${issues.join(" | ")}
+HTML:${files.html.slice(0,12000)}
+CSS:${files.css.slice(0,9000)}
+JS:${files.js.slice(0,12000)}`;
+   const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.15,max_tokens:5000});
+   files=extract(r.choices?.[0]?.message?.content||"");current="html";show();return true;
+ } else {
+   const spec=`Tu es un ingénieur logiciel senior. Corrige ce projet multi-fichiers. Retourne UNIQUEMENT JSON {"summary":"...","run":"...","files":[{"path":"...","content":"..."}]}.
+PROBLÈMES: ${issues.join(" | ")}
+PROJET: ${JSON.stringify(projectFiles).slice(0,25000)}`;
+   const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.15,max_tokens:7000});
+   const raw=r.choices?.[0]?.message?.content||"";const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Correction multi-fichiers invalide");const d=JSON.parse(m[0]);projectFiles=Array.isArray(d.files)?d.files:projectFiles;$("#plan").style.display="block";$("#plan").textContent=(d.summary||"Projet corrigé")+"\n\nBuild / Run:\n"+(d.run||"Voir README")+"\n\nFichiers:\n"+projectFiles.map(x=>"• "+x.path).join("\n");return true;
+ }
+}
 async function runLocalTests(){
  const log=$("#testlog");log.style.display="block";log.textContent="Préparation de la sandbox locale…";
  const chosen=$("#projectType").value==="auto"?detectType($("#brief").value):$("#projectType").value;
@@ -156,7 +196,11 @@ async function runLocalTests(){
  log.textContent=issues.length?"⚠️ Tests terminés avec remarques:\n- "+issues.join("\n- "):"✅ Build & Test local terminé sans erreur détectée.";
 }
 $("#test").onclick=runLocalTests;
-
+$("#autopilot").onclick=async()=>{if(!engine)return;$("#autopilot").disabled=true;try{
+ $("#status").textContent="Autopilot: construction initiale…";
+ await ask("build");
+ for(let i=1;i<=3;i++){const issues=collectIssues();if(!issues.length){$("#status").textContent="Autopilot terminé ✅ — aucun problème structurel détecté après "+i+" passe(s).";break}$("#status").textContent="Autopilot passe "+i+"/3 — "+issues.join(" · ");await repairFromIssues(issues);if(i===3)$("#status").textContent="Autopilot terminé avec vérifications. Consulte Build & Test pour le rapport final."}
+}catch(e){$("#status").textContent="Autopilot erreur: "+(e.message||e)}finally{$("#autopilot").disabled=false}};
 function projects(){return JSON.parse(localStorage.getItem("sahbi_builder_projects")||"{}")}
 function renderProjects(){const p=projects(),box=$("#projectList");box.innerHTML="";Object.keys(p).forEach(name=>{const d=document.createElement("div");d.className="project";const n=document.createElement("span");n.textContent=name;n.style.cursor="pointer";n.onclick=()=>{files=p[name].files;$("#brief").value=p[name].brief||"";$("#projectName").value=name;current="html";show()};const del=document.createElement("button");del.textContent="🗑";del.className="danger";del.onclick=()=>{const q=projects();delete q[name];localStorage.setItem("sahbi_builder_projects",JSON.stringify(q));renderProjects()};d.append(n,del);box.appendChild(d)})}
 $("#save").onclick=()=>{const name=$("#projectName").value.trim()||("Projet "+new Date().toLocaleString());const p=projects();p[name]={files,brief:$("#brief").value,updated:new Date().toISOString()};localStorage.setItem("sahbi_builder_projects",JSON.stringify(p));$("#projectName").value=name;renderProjects();$("#status").textContent="Projet sauvegardé localement ✅"};renderProjects();
