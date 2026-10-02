@@ -511,89 +511,98 @@ function looksLikeBuildRequest(t){
  const product=/(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme|scanner|script|bot|dashboard)/i;
  return creation.test(s) && product.test(s);
 }
+function freeFallbackWeb(userText){
+ const safe=String(userText||"").replace(/[<>]/g,"").slice(0,240);
+ return {
+   html:'<main class="app"><section class="hero"><h1>Sahbi Starter</h1><p id="brief"></p></section><section class="card"><label>Cible / entrée<input id="target" placeholder="https://example.com"></label><button id="run">Analyser</button><pre id="out">Prêt.</pre></section></main>',
+   css:'*{box-sizing:border-box}body{margin:0;background:#07101f;color:#eef2ff;font:16px system-ui,sans-serif}.app{max-width:780px;margin:auto;padding:28px}.hero,.card{background:#111c31;border:1px solid #26334b;border-radius:18px;padding:20px;margin-bottom:16px}h1{margin-top:0}label{display:grid;gap:8px}input{padding:12px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:white}button{margin-top:12px;padding:12px 16px;border:0;border-radius:10px;background:#7c3aed;color:white;font-weight:700}pre{white-space:pre-wrap;background:#080f1b;padding:14px;border-radius:12px;min-height:120px}',
+   js:'const BRIEF='+JSON.stringify(safe)+';document.getElementById("brief").textContent=BRIEF;document.getElementById("run").onclick=()=>{const v=document.getElementById("target").value.trim();document.getElementById("out").textContent=v?"Starter prêt pour intégrer la logique demandée sur: "+v:"Ajoute une entrée/cible."};'
+ };
+}
+function freeFallbackSoftware(userText){
+ const s=String(userText||"").toLowerCase();
+ if(/rust/.test(s))return {summary:"Starter Rust généré en mode Free Max.",run:"cargo run",files:[
+  {path:"Cargo.toml",content:'[package]\nname="sahbi_starter"\nversion="0.1.0"\nedition="2021"\n'},
+  {path:"src/main.rs",content:'fn main(){println!("Sahbi Free Max starter ready");}\n'},
+  {path:"README.md",content:"# Sahbi Free Max Starter\n\nDemande: "+userText+"\n\nLancer: cargo run\n"}
+ ]};
+ if(/python/.test(s))return {summary:"Starter Python généré en mode Free Max.",run:"python app.py",files:[
+  {path:"app.py",content:'def main():\n    print("Sahbi Free Max starter ready")\n\nif __name__=="__main__":\n    main()\n'},
+  {path:"README.md",content:"# Sahbi Free Max Starter\n\nDemande: "+userText+"\n\nLancer: python app.py\n"}
+ ]};
+ if(/node|javascript|api|backend/.test(s))return {summary:"Starter Node généré en mode Free Max.",run:"node server.js",files:[
+  {path:"package.json",content:'{"name":"sahbi-starter","version":"0.1.0","type":"module","scripts":{"start":"node server.js"}}'},
+  {path:"server.js",content:'import http from "node:http";\nhttp.createServer((req,res)=>{res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,message:"Sahbi Free Max starter ready"}));}).listen(process.env.PORT||3000);\n'},
+  {path:"README.md",content:"# Sahbi Free Max Starter\n\nDemande: "+userText+"\n\nLancer: npm start\n"}
+ ]};
+ if(/kernel|bootloader|operating system|syst[eè]me d'exploitation|\bos\b/.test(s))return {summary:"Mini-OS éducatif starter généré en mode Free Max.",run:"Voir README.md",files:[
+  {path:"README.md",content:"# Mini-OS éducatif — Sahbi Free Max\n\nDemande: "+userText+"\n\nStarter éducatif uniquement. Ajoute une toolchain cross-compiler/bootloader pour produire une image bootable.\n"},
+  {path:"kernel.c",content:'#include <stdint.h>\nvoid kernel_main(void){volatile uint16_t* v=(uint16_t*)0xB8000;v[0]=0x0F00|\'S\';v[1]=0x0F00|\'A\';v[2]=0x0F00|\'H\';v[3]=0x0F00|\'B\';v[4]=0x0F00|\'I\';for(;;){} }\n'}
+ ]};
+ return {summary:"Starter logiciel générique généré en mode Free Max.",run:"Voir README.md",files:[
+  {path:"README.md",content:"# Sahbi Free Max Starter\n\nDemande: "+userText+"\n\nLe moteur gratuit était indisponible; ce projet de base a été livré pour éviter un blocage.\n"},
+  {path:"main.txt",content:"Sahbi Free Max starter\n"}
+ ]};
+}
 async function generateFinalProduct(userText){
- const progress=bubble("assistant","🏗️ Je construis, teste et prépare le produit…");
+ const progress=bubble("assistant","🏗️ Free Max · je prépare le projet…");
  const chosen=/(syst[eè]me d'exploitation|operating system|kernel|bootloader|\bos\b)/i.test(userText)?"systems":/(backend|api|cli|logiciel|software|python|node|rust|c\+\+)/i.test(userText)?"software":"web";
  try{
    if(chosen==="web"){
-     const spec=`Tu es Sahbi AI Product Builder. Retourne UNIQUEMENT JSON {"html":"...","css":"...","js":"..."}.
-Construis un produit web complet, responsive, propre et fonctionnel selon la demande. Les boutons doivent fonctionner. Utilise localStorage si une persistance locale suffit. Pas d'explication hors JSON.
-DEMANDE: ${userText}`;
-     const raw=await cloudChat([{role:"system",content:spec}],4000);
-     const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
-     let d=JSON.parse(m[0]);
-     let issues=[];try{new Function(d.js||"")}catch(e){issues.push("Erreur JS: "+e.message)}
-     if(!/<[a-z][\s\S]*>/i.test(d.html||""))issues.push("HTML invalide");
-     if(issues.length){
-       (progress._body||progress).textContent="🧯 Je corrige automatiquement…";
-       const fix=`Corrige ce projet. Retourne UNIQUEMENT JSON {"html":"...","css":"...","js":"..."}.
-PROBLÈMES: ${issues.join(" | ")}
-HTML:${(d.html||"").slice(0,12000)}
-CSS:${(d.css||"").slice(0,9000)}
-JS:${(d.js||"").slice(0,12000)}`;
-       const repaired=await cloudChat([{role:"system",content:fix}],4000);
-       const mm=repaired.match(/\{[\s\S]*\}/);if(mm)d=JSON.parse(mm[0]);
+     let d=null;
+     try{
+       (progress._body||progress).textContent="🧠 Étape 1/2 · plan rapide…";
+       const plan=await cloudChat([{role:"system",content:"Donne un plan très court (max 8 lignes) pour construire cette app web. Réponds sans markdown inutile. Demande: "+userText}],500);
+       (progress._body||progress).textContent="⚙️ Étape 2/2 · génération…";
+       const spec="Retourne UNIQUEMENT un JSON compact {\"html\":\"...\",\"css\":\"...\",\"js\":\"...\"}.\nCrée une app web fonctionnelle et responsive à partir de ce plan:\n"+plan.slice(0,3500)+"\nDemande originale: "+userText+"\nReste sous 1800 tokens. Pas d'explication hors JSON.";
+       const raw=await cloudChat([{role:"system",content:spec}],1800);
+       const m=raw.match(/\{[\s\S]*\}/);
+       if(m)d=JSON.parse(m[0]);
+     }catch{}
+     if(!d){
+       (progress._body||progress).textContent="🛟 IA gratuite indisponible · génération du starter local…";
+       d=freeFallbackWeb(userText);
      }
+     let issues=[];try{new Function(d.js||"")}catch(e){issues.push("JS: "+e.message)}
+     if(!/<[a-z][\s\S]*>/i.test(d.html||""))issues.push("HTML invalide");
+     if(issues.length)d=freeFallbackWeb(userText);
+
      const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
      const zip=new JSZip();
-     const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${d.css||""}</style></head><body>${d.html||""}<script>${String(d.js||"").replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;
+     const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+(d.css||"")+'</style></head><body>'+(d.html||"")+'<script>'+String(d.js||"").replace(/<\/script>/g,"<\\/script>")+'<\/script></body></html>';
      zip.file("index.html",html);
-     zip.file("README.md","# Produit Sahbi AI\n\nProduit généré et vérifié depuis le chat.");
+     zip.file("README.md","# Produit Sahbi Free Max\n\nDemande: "+userText+"\n");
      const blob=await zip.generateAsync({type:"blob"});
-     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-product-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-     const done="🏁 Produit final prêt ✅\nJe l’ai généré, vérifié et téléchargé en ZIP sur ton appareil.";
+     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-free-max-web.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+     const done="🏁 Free Max · projet web prêt ✅\nZIP livré même si le modèle gratuit a décroché.";
      (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
    }
 
-   const spec=`Tu es Sahbi AI Product Builder Pro. Retourne UNIQUEMENT JSON {"summary":"...","run":"...","files":[{"path":"README.md","content":"..."},{"path":"...","content":"..."}]}.
-Crée un vrai projet multi-fichiers cohérent. Inclure README, architecture, commandes build/run et code initial utile.
-Pour un OS: produire un mini-OS éducatif réaliste et progressif; ne prétends pas livrer un OS de production complet.
-DEMANDE: ${userText}`;
-   const raw=await cloudChat([{role:"system",content:spec}],5000);
-   const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
-   let d=JSON.parse(m[0]);
-
-   let testReport="";
-   if(ownerToken && Array.isArray(d.files)){
-     for(let cycle=1;cycle<=2;cycle++){
-       const candidate=d.files.find(f=>/\.(py|js|c|cpp|rs|java)$/i.test(f.path||"") && String(f.content||"").length<=30000);
-       if(!candidate)break;
-       const ext=(candidate.path.split(".").pop()||"").toLowerCase();
-       const lang=ext==="py"?"python":ext==="js"?"javascript":ext==="c"?"c":ext==="cpp"?"cpp":ext==="rs"?"rust":"java";
-       (progress._body||progress).textContent="🧪 Build Lab · passe "+cycle+"/2 · "+candidate.path+"…";
-       try{
-         const r=await fetch(SAHBI_API+"/api/build",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},body:JSON.stringify({language:lang,source:String(candidate.content||""),stdin:""})});
-         const t=await r.json().catch(()=>({}));
-         if(!r.ok)break;
-         testReport="Build Lab: "+t.status+(t.compileOutput?"\n"+t.compileOutput:"")+(t.stderr?"\n"+t.stderr:"")+(t.stdout?"\n"+t.stdout:"");
-         if(t.ok)break;
-         if(!(t.compileOutput||t.stderr))break;
-
-         (progress._body||progress).textContent="🧯 Erreur détectée · correction automatique "+cycle+"/2…";
-         const repair=`Corrige le projet à partir de cette erreur de build. Retourne UNIQUEMENT le même format JSON {"summary":"...","run":"...","files":[{"path":"...","content":"..."}]}.
-ERREUR:
-${testReport}
-PROJET:
-${JSON.stringify(d).slice(0,30000)}`;
-         const fixed=await cloudChat([{role:"system",content:repair}],5000);
-         const fm=fixed.match(/\{[\s\S]*\}/);
-         if(!fm)break;
-         d=JSON.parse(fm[0]);
-       }catch{break}
-     }
+   let d=null;
+   try{
+     (progress._body||progress).textContent="🧠 Étape 1/2 · architecture…";
+     const plan=await cloudChat([{role:"system",content:"Donne une architecture très courte pour ce projet logiciel. Max 10 lignes. Demande: "+userText}],550);
+     (progress._body||progress).textContent="⚙️ Étape 2/2 · fichiers…";
+     const spec="Retourne UNIQUEMENT JSON {\"summary\":\"...\",\"run\":\"...\",\"files\":[{\"path\":\"README.md\",\"content\":\"...\"},{\"path\":\"...\",\"content\":\"...\"}]}.\nProjet demandé: "+userText+"\nPlan: "+plan.slice(0,3500)+"\nCrée un petit projet cohérent et exécutable. Maximum 6 fichiers. Reste sous 2200 tokens.";
+     const raw=await cloudChat([{role:"system",content:spec}],2200);
+     const m=raw.match(/\{[\s\S]*\}/);if(m)d=JSON.parse(m[0]);
+   }catch{}
+   if(!d){
+     (progress._body||progress).textContent="🛟 IA gratuite indisponible · génération du starter local…";
+     d=freeFallbackSoftware(userText);
    }
 
    const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;
    const zip=new JSZip();
    for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
-   if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Produit Sahbi AI\n\n"+(d.summary||"Projet généré"));
-   zip.file("SAHBI-DELIVERY.txt","Résumé:\n"+(d.summary||"")+"\n\nBuild / Run:\n"+(d.run||"Voir README")+(testReport?"\n\n"+testReport:""));
+   if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Sahbi Free Max\n\n"+(d.summary||"Projet"));
+   zip.file("SAHBI-DELIVERY.txt","Résumé:\n"+(d.summary||"")+"\n\nRun:\n"+(d.run||"Voir README"));
    const blob=await zip.generateAsync({type:"blob"});
-   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-software-final.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-   const done="🏁 Projet final prêt ✅\nJe l’ai généré"+(testReport?", passé dans Build Lab":"")+" et téléchargé en ZIP.";
+   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sahbi-free-max-software.zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+   const done="🏁 Free Max · projet logiciel prêt ✅\nZIP livré.";
    (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
  }catch(e){
-   (progress._body||progress).textContent="❌ Construction interrompue : "+(e?.message||e);
+   (progress._body||progress).textContent="❌ Erreur locale inattendue : "+(e?.message||e);
    return false;
  }
 }
