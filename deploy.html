@@ -1,0 +1,35 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sahbi AI · Deploy Hub</title>
+<style>
+:root{color-scheme:dark;--line:rgba(255,255,255,.08);--muted:#94a3b8;--a:#7c3aed}*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 100% 0,rgba(124,58,237,.18),transparent 60%),#070b14;color:#fff;font-family:Inter,system-ui,sans-serif}
+header{padding:12px 14px;border-bottom:1px solid var(--line);background:#070b14e8;position:sticky;top:0}.head{max-width:1000px;margin:auto;display:flex;justify-content:space-between;gap:8px;align-items:center}.row{display:flex;gap:8px;flex-wrap:wrap}
+button,select,textarea,input{font:inherit}button,select{border:1px solid var(--line);background:#172036;color:#fff;border-radius:11px;padding:9px 11px}.primary{background:var(--a);border-color:transparent}
+main{max-width:1000px;margin:auto;padding:18px 14px}.hero{border:1px solid var(--line);background:linear-gradient(180deg,#10192b,#0c1423);border-radius:18px;padding:16px}.muted{color:var(--muted);font-size:12px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}.card{border:1px solid var(--line);background:#0d1627;border-radius:15px;padding:14px}.card h3{margin-top:0}.code{white-space:pre-wrap;background:#08111d;border:1px solid var(--line);padding:10px;border-radius:10px;font:12px/1.5 ui-monospace,monospace;min-height:90px}.ok{color:#bbf7d0}
+@media(max-width:700px){.grid{grid-template-columns:1fr}}
+</style></head><body>
+<header><div class="head"><div><b>🚀 Sahbi AI Deploy Hub</b><div class="muted">Prépare un projet pour le publier sans connecter tes comptes</div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button onclick="location.href='./builder.html'">🛠️ Builder</button></div></div></header>
+<main>
+<section class="hero"><h2 style="margin-top:0">Déployer proprement, sans stocker tes identifiants</h2><p class="muted">Sahbi AI prépare les fichiers et les commandes. Tu choisis ensuite ton hébergeur. Les connexions permanentes aux comptes restent désactivées.</p></section>
+<div class="grid">
+  <section class="card"><h3>🌍 GitHub Pages</h3><p class="muted">Idéal pour sites statiques.</p><div class="code">1. Télécharge le ZIP depuis Builder
+2. Mets index.html à la racine d'un repo public
+3. Settings → Pages → Deploy from branch → main / root</div></section>
+  <section class="card"><h3>▲ Vercel</h3><p class="muted">Idéal pour React/Next/Vite.</p><div class="code">npm install
+npm run build
+vercel --prod</div></section>
+  <section class="card"><h3>🚂 Railway</h3><p class="muted">Idéal pour API/backend.</p><div class="code">Ajoute package.json / Dockerfile
+Définis PORT
+Déploie depuis ton repo
+Ajoute les variables d'environnement dans Railway</div></section>
+  <section class="card"><h3>☁️ Cloudflare Pages</h3><p class="muted">Idéal pour statique/Vite.</p><div class="code">Build command: npm run build
+Output directory: dist
+Aucune clé secrète dans le frontend</div></section>
+</div>
+<section class="card" style="margin-top:12px"><h3>🛡️ Checklist avant production</h3><div class="code">□ Pas de secret/API key dans le navigateur
+□ Validation des entrées
+□ HTTPS uniquement
+□ Auth côté serveur pour les actions sensibles
+□ Limites de débit
+□ Logs sans données privées
+□ Sauvegarde de la base
+□ Tests Build & Test / Autopilot terminés</div></section>
+</main></body></html>
