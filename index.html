@@ -414,6 +414,8 @@ async function runSecurityFromChat(text){
     "\nHigh: "+(d.summary?.high||0)+" · Medium: "+(d.summary?.medium||0)+" · Low: "+(d.summary?.low||0)+" · Info: "+(d.summary?.info||0)+
     (lines.length?"\n\n"+lines.join("\n"):"\n\nAucun finding dans les checks passifs.");
    (progress._body||progress).textContent=report;
+   localStorage.setItem("sahbi_last_security_report",report);
+   localStorage.setItem("sahbi_last_security_target",String(d.target||target));
    history.push({role:"assistant",content:report});save();
    return true;
  }catch(e){(progress._body||progress).textContent="Erreur Security Lab : "+(e.message||e);return true}
@@ -450,6 +452,32 @@ async function runAttachedCodeFromChat(){
    history.push({role:"assistant",content:report});save();
    return true;
  }catch(e){(progress._body||progress).textContent="Erreur Build Lab : "+(e.message||e);return true}
+}
+function looksLikeSecurityRemediation(t){
+ const s=String(t||"").toLowerCase();
+ return /(corrige|répare|repare|fix|résous|resous).{0,50}(ce que|ça|ca|audit|failles?|trouvé|trouve|problèmes?|problemes?)/i.test(s) ||
+        /(corrige|répare|repare|fix).{0,30}(security|sécurité|csp|cors|headers?)/i.test(s);
+}
+async function securityRemediationFromChat(){
+ const report=localStorage.getItem("sahbi_last_security_report")||"";
+ const target=localStorage.getItem("sahbi_last_security_target")||"";
+ const progress=bubble("assistant","🧯 J’analyse le dernier audit…");
+ if(!report){(progress._body||progress).textContent="Je n’ai pas de rapport Security Lab récent dans cette session. Lance d’abord un audit.";return true}
+ const promptText=`À partir de ce rapport Security Lab, donne uniquement un plan de correction concret, court et priorisé.
+Ne prétends pas avoir modifié un repo ou redéployé quoi que ce soit. Si une correction nécessite GitHub/Vercel/Supabase, dis précisément quel fichier/réglage changer.
+Cible: ${target}
+RAPPORT:
+${report}`;
+ try{
+   const answer=await cloudChat([{role:"system",content:promptText}],900);
+   const out="🧯 Plan de correction\n\n"+answer+"\n\nℹ️ Je peux analyser et préparer les corrections, mais je n’ai pas encore l’accès d’écriture GitHub/Vercel dans Sahbi pour les appliquer automatiquement.";
+   (progress._body||progress).textContent=out;
+   history.push({role:"assistant",content:out});save();
+   return true;
+ }catch(e){
+   (progress._body||progress).textContent="🧯 Correction à appliquer d’après le dernier audit:\n- Ajouter une Content-Security-Policy adaptée\n- Vérifier si CORS '*' est réellement nécessaire\n- Réduire les headers d’exposition serveur si possible\n\nJe n’ai pas encore l’accès d’écriture GitHub/Vercel pour appliquer ces changements automatiquement.";
+   return true;
+ }
 }
 function looksLikeBuildRequest(t){
  const s=t.toLowerCase();
@@ -544,6 +572,7 @@ ${JSON.stringify(d).slice(0,30000)}`;
 
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
 if(looksLikeSecurityAudit(text)){prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
+if(looksLikeSecurityRemediation(text)){prompt.value="";resizePrompt();busy=true;try{await securityRemediationFromChat()}finally{busy=false;send.disabled=false}return;}
 if(looksLikeCodeTest(text)&&attachedText){prompt.value="";resizePrompt();busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
 if(looksLikeBuildRequest(text)){prompt.value="";resizePrompt();busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
 let toolContext="";try{
