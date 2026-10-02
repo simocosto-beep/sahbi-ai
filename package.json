@@ -1,10 +1,10 @@
 {
   "name": "sahbi-ai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "ai": "^5.0.0"
+  "scripts": {
+    "start": "node railway/server.mjs"
   },
   "engines": {
     "node": ">=20"
