@@ -59,7 +59,7 @@ main{padding:18px 14px 160px}
   <div class="header-inner">
     <div class="brand"><div class="logo">S</div><div class="brand-text"><div class="brand-title">Sahbi AI</div><div class="sub">Ton assistant personnel · cloud-first</div></div></div>
     <div class="actions">
-      <select id="model" title="Modèle" disabled><option value="cloud" selected>Sahbi Cloud · Core v2</option></select>
+      <select id="model" title="Modèle" disabled><option value="cloud" selected>Sahbi Agent Core v3</option></select>
       <button id="menuBtn">☰</button>
       <button id="load" style="display:none">Charger l’IA</button>
       <button id="agentToggle" style="display:none">⚡ Agent ON</button>
@@ -123,29 +123,46 @@ function isGpuCrash(e){
 }
 const SAHBI_API="https://sahbi-api-production.up.railway.app";
 async function cloudChat(messages,maxTokens=900){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),20000);
-  try{
-    const r=await fetch(SAHBI_API+"/api/chat",{
-      method:"POST",
-      headers:{"Content-Type":"application/json",...(ownerToken?{"X-Sahbi-Owner-Token":ownerToken}:{})},
-      body:JSON.stringify({messages,max_tokens:maxTokens}),
-      signal:controller.signal
-    });
-    const data=await r.json().catch(()=>({}));
-    if(!r.ok){if(r.status===429)throw new Error("Sahbi reçoit trop de demandes. Réessaie dans quelques secondes.");throw new Error(data?.message||data?.error||("Erreur cloud HTTP "+r.status));}
-    const text=String(data?.text||"").trim();
-    if(!text) throw new Error("Réponse IA vide");
-    return text;
-  }catch(e){
-    if(e?.name==="AbortError") throw new Error("Le cloud Sahbi met trop de temps à répondre. Réessaie.");
-    throw e;
-  }finally{clearTimeout(timer)}
+  const big=maxTokens>=3000;
+  const timeoutMs=big?38000:20000;
+  let lastError;
+  for(let attempt=1;attempt<=2;attempt++){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{
+      const r=await fetch(SAHBI_API+"/api/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json",...(ownerToken?{"X-Sahbi-Owner-Token":ownerToken}:{})},
+        body:JSON.stringify({messages,max_tokens:maxTokens}),
+        signal:controller.signal
+      });
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok){
+        if(r.status===429)throw new Error("Sahbi reçoit trop de demandes. Réessaie dans quelques secondes.");
+        const err=new Error(data?.message||data?.error||("Erreur cloud HTTP "+r.status));
+        err.status=r.status;
+        throw err;
+      }
+      const text=String(data?.text||"").trim();
+      if(!text){const e=new Error("Réponse IA vide");e.status=502;throw e}
+      return text;
+    }catch(e){
+      lastError=e;
+      const transient=e?.name==="AbortError" || [502,503,504].includes(Number(e?.status||0)) || /temporairement|timeout|réponse ia vide/i.test(String(e?.message||""));
+      if(attempt<2 && transient){
+        await new Promise(r=>setTimeout(r,450));
+        continue;
+      }
+      if(e?.name==="AbortError")throw new Error("Le cloud Sahbi met trop de temps à répondre. Réessaie.");
+      throw e;
+    }finally{clearTimeout(timer)}
+  }
+  throw lastError||new Error("Erreur cloud");
 }
 async function ensureCloud(){
   backendMode="cloud";
   engine=cloudEngine;
-  status.innerHTML="<b>Prêt ✅</b> Sahbi Cloud actif — Railway + OpenRouter, aucun compte visiteur requis.";
+  status.innerHTML="<b>Prêt ✅</b> Sahbi Agent Core v3 actif — Railway + OpenRouter, aucun compte visiteur requis.";
   return true;
 }
 async function ensureCpuFallback(){
@@ -246,10 +263,10 @@ $("#ownerBtn").onclick=async()=>{
   }
 };
 refreshOwnerStatus();
-$("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Sahbi Cloud · Core v2</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
+$("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Sahbi Agent Core v3</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 if(backendMode==="cloud"){
-  $("#model").innerHTML='<option selected>Sahbi Cloud · Core v2</option>';
+  $("#model").innerHTML='<option selected>Sahbi Agent Core v3</option>';
   $("#model").disabled=true;
 }
 function render(){
@@ -325,7 +342,34 @@ async function planTools(userText){
 Outils: web (recherche encyclopédique), url (lire une URL), weather (météo d'une ville), calc (calcul arithmétique), fx (conversion au format "100 EUR en MAD"), note (enregistrer une note), task_add (ajouter une tâche), tasks (lister tâches), task_done (terminer tâche par numéro).
 Choisis un outil seulement si cela apporte une donnée externe ou une action locale utile. Texte utilisateur: ${userText}`;
  try{const r=await engine.chat.completions.create({messages:[{role:"system",content:planner}],temperature:0,max_tokens:120});const raw=r.choices?.[0]?.message?.content||"";const m=raw.match(/\{[\s\S]*\}/);return m?JSON.parse(m[0]):{tool:"none",arg:""}}catch{return {tool:"none",arg:""}}
+}async function planToolChain(userText){
+ const planner=`Tu es le planificateur de Sahbi AI. Retourne UNIQUEMENT un JSON compact:
+{"steps":[{"tool":"nom","arg":"texte"}]}
+Maximum 3 étapes, dans l'ordre. Outils: web, url, weather, calc, fx, note, task_add, tasks, task_done.
+N'utilise des outils que s'ils apportent une donnée externe ou une action locale. Si aucun outil n'est utile: {"steps":[]}.
+Demande: ${userText}`;
+ try{
+   const raw=await cloudChat([{role:"system",content:planner}],300);
+   const m=raw.match(/\{[\s\S]*\}/);
+   const d=m?JSON.parse(m[0]):{steps:[]};
+   return {steps:Array.isArray(d.steps)?d.steps.slice(0,3):[]};
+ }catch{return {steps:[]}}
 }
+async function runToolChain(userText){
+ const plan=await planToolChain(userText);
+ const out=[];
+ for(let i=0;i<plan.steps.length;i++){
+   const s=plan.steps[i]||{};
+   if(!s.tool||s.tool==="none")continue;
+   $("#fileChip").textContent="⚡ Agent étape "+(i+1)+"/"+plan.steps.length+" · "+s.tool+"…";
+   try{
+     const result=await execTool(s.tool,String(s.arg||userText));
+     out.push("[Étape "+(i+1)+" · "+s.tool+"]\n"+result);
+   }catch(e){out.push("[Étape "+(i+1)+" · "+s.tool+" · erreur]\n"+(e?.message||e))}
+ }
+ return out.join("\n\n");
+}
+
 function looksLikeSecurityAudit(t){
  const s=String(t||"").toLowerCase();
  return /(audit|audite|scan|scanne|scanner|sécurité|security|vuln|failles?).{0,60}(site|url|domaine|domain|https?:\/\/)/i.test(s) || /(mon site|my site).{0,40}(audit|scan|sécurité|security)/i.test(s);
@@ -436,28 +480,31 @@ DEMANDE: ${userText}`;
 
    let testReport="";
    if(ownerToken && Array.isArray(d.files)){
-     const candidate=d.files.find(f=>/\.(py|js|c|cpp|rs|java)$/i.test(f.path||"") && String(f.content||"").length<=30000);
-     if(candidate){
+     for(let cycle=1;cycle<=2;cycle++){
+       const candidate=d.files.find(f=>/\.(py|js|c|cpp|rs|java)$/i.test(f.path||"") && String(f.content||"").length<=30000);
+       if(!candidate)break;
        const ext=(candidate.path.split(".").pop()||"").toLowerCase();
        const lang=ext==="py"?"python":ext==="js"?"javascript":ext==="c"?"c":ext==="cpp"?"cpp":ext==="rs"?"rust":"java";
-       (progress._body||progress).textContent="🧪 Je compile/teste "+candidate.path+"…";
+       (progress._body||progress).textContent="🧪 Build Lab · passe "+cycle+"/2 · "+candidate.path+"…";
        try{
          const r=await fetch(SAHBI_API+"/api/build",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},body:JSON.stringify({language:lang,source:String(candidate.content||""),stdin:""})});
          const t=await r.json().catch(()=>({}));
-         if(r.ok){
-           testReport="Build Lab: "+t.status+(t.compileOutput?"\n"+t.compileOutput:"")+(t.stderr?"\n"+t.stderr:"")+(t.stdout?"\n"+t.stdout:"");
-           if(!t.ok && (t.compileOutput||t.stderr)){
-             (progress._body||progress).textContent="🧯 Le build a trouvé une erreur, je corrige…";
-             const repair=`Corrige le projet à partir de cette erreur de build. Retourne UNIQUEMENT le même format JSON {"summary":"...","run":"...","files":[{"path":"...","content":"..."}]}.
+         if(!r.ok)break;
+         testReport="Build Lab: "+t.status+(t.compileOutput?"\n"+t.compileOutput:"")+(t.stderr?"\n"+t.stderr:"")+(t.stdout?"\n"+t.stdout:"");
+         if(t.ok)break;
+         if(!(t.compileOutput||t.stderr))break;
+
+         (progress._body||progress).textContent="🧯 Erreur détectée · correction automatique "+cycle+"/2…";
+         const repair=`Corrige le projet à partir de cette erreur de build. Retourne UNIQUEMENT le même format JSON {"summary":"...","run":"...","files":[{"path":"...","content":"..."}]}.
 ERREUR:
 ${testReport}
 PROJET:
 ${JSON.stringify(d).slice(0,30000)}`;
-             const fixed=await cloudChat([{role:"system",content:repair}],5000);
-             const fm=fixed.match(/\{[\s\S]*\}/);if(fm)d=JSON.parse(fm[0]);
-           }
-         }
-       }catch{}
+         const fixed=await cloudChat([{role:"system",content:repair}],5000);
+         const fm=fixed.match(/\{[\s\S]*\}/);
+         if(!fm)break;
+         d=JSON.parse(fm[0]);
+       }catch{break}
      }
    }
 
@@ -494,7 +541,7 @@ else if(text.startsWith("/fx ")){ $("#fileChip").textContent="💱 Taux en direc
 else if(text.startsWith("/note ")){toolContext=saveNote(text.slice(6))}
 }catch(err){toolContext="Erreur outil: "+(err?.message||err)}
 if(!toolContext && !text.startsWith("/")){const sk=findSkill(text);if(sk){sk.uses=(sk.uses||0)+1;const ss=getSkills();const i=ss.findIndex(x=>x.name===sk.name);if(i>=0){ss[i]=sk;saveSkills(ss)}let arg=text;if(sk.argTemplate)arg=sk.argTemplate.replace(/\{input\}/g,text);toolContext="[Skill appris: "+sk.name+"]\n"+sk.instruction;if(sk.tool&&sk.tool!=="none"){try{toolContext+="\n\n"+await execTool(sk.tool,arg)}catch(e){toolContext+="\nErreur outil: "+(e?.message||e)}}}}
-if(agentMode && !toolContext && !text.startsWith("/") && /(météo|weather|température|convert|taux|euro|mad|usd|calcul|combien|recherche|cherche|web|internet|url|http|note|tâche|task)/i.test(text)){try{const p=await planTools(text);if(p.tool&&p.tool!=="none"){$("#fileChip").textContent="⚡ Agent utilise "+p.tool+"…";toolContext=await execTool(p.tool,p.arg||text)}}catch{}}
+if(agentMode && !toolContext && !text.startsWith("/") && /(météo|weather|température|convert|taux|euro|mad|usd|calcul|combien|recherche|cherche|web|internet|url|http|note|tâche|task)/i.test(text)){try{toolContext=await runToolChain(text)}catch{}}
 if(toolContext)text+="\n\n[Résultat d'outil vérifié]\n"+toolContext.slice(0,26000);
 $("#fileChip").textContent="";
 if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue et le registre de l'utilisateur. Adapte naturellement ton ton à sa façon d'écrire sans inventer de dialecte ni ajouter de traduction parasite. Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}${activeProjectContext()}`;try{
