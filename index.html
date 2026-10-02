@@ -276,7 +276,7 @@ if(backendMode==="cloud"){
   $("#model").disabled=true;
 }
 function render(){
- history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché|apply_chat_template|chat_template is not set|Mode CPU a aussi échoué|Mode CPU indisponible/i.test(m.content||"")));
+ history=history.filter(m=>!(m.role==="assistant" && (/GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché|apply_chat_template|chat_template is not set|Mode CPU a aussi échoué|Mode CPU indisponible/i.test(m.content||"") || String(m.content||"").trim()==="Audit annulé.")));
  save();
  chat.innerHTML="";
  if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
@@ -398,8 +398,12 @@ async function runSecurityFromChat(text){
  const progress=bubble("assistant","🛡️ Je prépare l’audit Security Lab…");
  if(!ownerToken){(progress._body||progress).textContent="👑 Active d’abord le mode Owner pour lancer un audit depuis le chat.";return true}
  let target=extractFirstUrl(text);
- if(!target){target=(window.prompt("URL ou domaine à auditer :")||"").trim()}
- if(!target){(progress._body||progress).textContent="Audit annulé.";return true}
+ if(!target){
+   localStorage.setItem("sahbi_pending_security_audit","1");
+   (progress._body||progress).textContent="🛡️ Donne-moi simplement l’URL ou le domaine que tu veux auditer.";
+   return true;
+ }
+ localStorage.removeItem("sahbi_pending_security_audit");
  const ok=window.confirm("Confirme que tu possèdes cette cible ou que tu as une autorisation explicite pour l’auditer.");
  if(!ok){(progress._body||progress).textContent="Audit annulé : autorisation non confirmée.";return true}
  try{
@@ -594,6 +598,9 @@ ${JSON.stringify(d).slice(0,30000)}`;
 
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
 const quick=localQuickReply(text);if(quick){prompt.value="";resizePrompt();history.push({role:"user",content:text},{role:"assistant",content:quick});save();bubble("user",text);bubble("assistant",quick);return;}
+if(localStorage.getItem("sahbi_pending_security_audit")==="1" && extractFirstUrl(text)){
+  prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;
+}
 if(looksLikeBuildRequest(text)){prompt.value="";resizePrompt();busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
 if(looksLikeSecurityAudit(text)){prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
 if(looksLikeSecurityRemediation(text)){prompt.value="";resizePrompt();busy=true;try{await securityRemediationFromChat()}finally{busy=false;send.disabled=false}return;}
