@@ -4,33 +4,124 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#111827"><title>Sahbi AI</title><link rel="manifest" href="./manifest.json">
 <style>
-:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2e;--muted:#94a3b8;--text:#f8fafc;--line:#26324d;--accent:#7c3aed}
-*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(180deg,#0b1020,#111827);color:var(--text);min-height:100vh}
-.app{max-width:980px;margin:auto;min-height:100vh}header{position:sticky;top:0;z-index:5;background:rgba(11,16,32,.9);backdrop-filter:blur(16px);border-bottom:1px solid var(--line);padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between}
-.brand{display:flex;gap:10px;align-items:center}.logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#06b6d4);display:grid;place-items:center;font-weight:800}.sub{font-size:12px;color:var(--muted)}
-.actions{display:flex;gap:8px;flex-wrap:wrap}button,select,textarea{font:inherit}button,select{border:1px solid var(--line);background:#172036;color:#fff;border-radius:12px;padding:9px 12px}button{cursor:pointer}.primary{background:var(--accent);border-color:transparent}button:disabled{opacity:.5}
-main{padding:18px 14px 125px}.status{border:1px solid var(--line);background:#121a2ecc;border-radius:14px;padding:12px;margin-bottom:14px;font-size:14px}.status b{color:#c4b5fd}
-.chat{display:flex;flex-direction:column;gap:12px}.msg{max-width:86%;padding:12px 14px;border-radius:16px;white-space:pre-wrap;line-height:1.45}.user{align-self:flex-end;background:#5b21b6}.assistant{align-self:flex-start;background:#182238;border:1px solid var(--line)}
-.composer{position:fixed;bottom:0;left:0;right:0;background:#0b1020f5;backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:10px}.composer-inner{max-width:980px;margin:auto;display:grid;grid-template-columns:1fr auto;gap:8px}
-.inputwrap{display:flex;gap:8px;align-items:end;background:#121a2e;border:1px solid var(--line);border-radius:16px;padding:8px}.inputwrap textarea{width:100%;resize:none;max-height:180px;min-height:46px;border:0;outline:0;background:transparent;color:#fff;padding:8px}
-.drawer{position:fixed;inset:0;z-index:20;background:#0009;display:none}.drawer.show{display:block}.panel{position:absolute;right:0;top:0;bottom:0;width:min(92vw,460px);background:#0f172a;border-left:1px solid var(--line);padding:18px;overflow:auto}.panel textarea{width:100%;min-height:170px;border-radius:12px;background:#111827;color:#fff;border:1px solid var(--line);padding:10px}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.hint{font-size:12px;color:var(--muted)}
-.quick{max-width:980px;margin:8px auto 0;display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.quick button{white-space:nowrap;padding:6px 9px;font-size:12px;background:#101827}.tts{font-size:11px;margin-top:8px;opacity:.75;cursor:pointer}
-@media(max-width:640px){header{align-items:flex-start}.msg{max-width:94%}.actions select{max-width:150px}}
+:root{
+  color-scheme:dark;
+  --bg:#070b14;--panel:#0e1628;--panel2:#111c32;--muted:#91a0b8;--text:#f8fafc;
+  --line:rgba(255,255,255,.08);--accent:#7c3aed;--accent2:#06b6d4;--ok:#22c55e;
+  --shadow:0 18px 60px rgba(0,0,0,.34)
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:
+radial-gradient(850px 500px at 0% -10%,rgba(124,58,237,.22),transparent 62%),
+radial-gradient(700px 500px at 110% 0%,rgba(6,182,212,.15),transparent 60%),
+linear-gradient(180deg,#070b14,#0a1020 56%,#080d18);
+color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{padding-bottom:max(110px,env(safe-area-inset-bottom))}
+.app{max-width:1120px;margin:auto;min-height:100vh}
+header{position:sticky;top:0;z-index:10;background:rgba(7,11,20,.86);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+.header-inner{max-width:1120px;margin:auto;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;gap:11px;align-items:center;min-width:0}.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-weight:900;box-shadow:0 10px 30px rgba(124,58,237,.28)}.brand-text{min-width:0}.brand-title{font-weight:850;font-size:17px}.sub{font-size:12px;color:var(--muted);margin-top:2px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+button,select,textarea,input{font:inherit}
+button,select{border:1px solid var(--line);background:#151f35;color:#fff;border-radius:12px;padding:9px 11px}
+button{cursor:pointer;transition:.18s transform,.18s background}.primary{background:linear-gradient(135deg,#6d28d9,#7c3aed);border-color:transparent;box-shadow:0 10px 25px rgba(124,58,237,.2)}button:hover{transform:translateY(-1px)}button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+main{padding:18px 14px 160px}
+.hero{padding:20px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(145deg,rgba(18,28,50,.88),rgba(9,15,28,.9));box-shadow:var(--shadow);margin-bottom:16px}
+.hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.hero h1{font-size:26px;line-height:1.1;margin:0 0 8px}.hero p{margin:0;color:#b7c2d6;max-width:700px;line-height:1.5}
+.hero-badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.badge{font-size:11px;padding:6px 9px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.035);color:#cbd5e1}.badge.ok{color:#bbf7d0;background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2)}
+.feature-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 16px}
+.feature{border:1px solid var(--line);background:linear-gradient(180deg,#10192b,#0c1423);border-radius:16px;padding:14px;cursor:pointer;transition:.18s transform,.18s border-color,.18s background;min-height:112px}
+.feature:hover{transform:translateY(-2px);border-color:rgba(124,58,237,.45);background:#121e34}
+.feature-icon{font-size:23px}.feature-title{font-weight:750;margin-top:10px}.feature-desc{font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}
+.status{border:1px solid var(--line);background:rgba(14,22,40,.82);border-radius:15px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#c7d2e3}.status b{color:#c4b5fd}
+.chat-card{border:1px solid var(--line);background:rgba(10,17,31,.68);border-radius:20px;padding:12px;min-height:240px}
+.chat{display:flex;flex-direction:column;gap:12px}.msg{max-width:84%;padding:12px 14px;border-radius:16px;white-space:pre-wrap;line-height:1.5}.user{align-self:flex-end;background:linear-gradient(135deg,#5b21b6,#6d28d9)}.assistant{align-self:flex-start;background:#152038;border:1px solid var(--line)}
+.tts{font-size:11px;margin-top:8px;color:#9fb0c9;cursor:pointer}
+.composer{position:fixed;bottom:0;left:0;right:0;z-index:11;background:rgba(7,11,20,.92);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:9px 10px max(9px,env(safe-area-inset-bottom))}
+.composer-inner{max-width:1120px;margin:auto;display:grid;grid-template-columns:1fr auto;gap:8px}.inputwrap{display:flex;gap:7px;align-items:end;background:#111a2f;border:1px solid var(--line);border-radius:16px;padding:7px}.inputwrap textarea{width:100%;resize:none;max-height:180px;min-height:48px;border:0;outline:0;background:transparent;color:#fff;padding:8px}.inputwrap button{padding:9px 10px}
+.quick{max-width:1120px;margin:7px auto 0;display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}.quick::-webkit-scrollbar{display:none}.quick button{white-space:nowrap;padding:6px 9px;font-size:12px;background:#0f1727}
+.drawer{position:fixed;inset:0;z-index:30;background:#000a;display:none}.drawer.show{display:block}.panel{position:absolute;right:0;top:0;bottom:0;width:min(94vw,470px);background:#0e1628;border-left:1px solid var(--line);padding:18px;overflow:auto;box-shadow:-20px 0 60px rgba(0,0,0,.35)}.panel textarea{width:100%;min-height:170px;border-radius:12px;background:#0a1221;color:#fff;border:1px solid var(--line);padding:10px}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.hint{font-size:12px;color:var(--muted)}
+.project{padding:10px;border:1px solid var(--line);border-radius:12px;margin:7px 0;background:#0b1323;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.mobile-menu{display:none}
+.mobile-nav{display:none}
+@media(max-width:860px){.feature-grid{grid-template-columns:repeat(2,1fr)}.actions select{max-width:180px}.actions .desktop-extra{display:none}}
+@media(max-width:640px){
+  .header-inner{align-items:flex-start}.actions{justify-content:flex-end}.actions select{max-width:170px}.actions button:not(#load):not(#menuBtn){display:none}.mobile-menu{display:block}
+  .hero{padding:16px}.hero h1{font-size:22px}.hero-top{display:block}.feature-grid{grid-template-columns:1fr 1fr;gap:8px}.feature{min-height:102px;padding:12px}.feature-desc{font-size:11px}
+  main{padding:12px 10px 175px}.msg{max-width:94%}.chat-card{border-radius:16px}
+  .mobile-nav{position:fixed;bottom:106px;left:10px;right:10px;z-index:12;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:rgba(11,17,30,.93);backdrop-filter:blur(16px);border:1px solid var(--line);padding:7px;border-radius:16px;box-shadow:var(--shadow)}
+  .mobile-nav button{padding:8px 5px;font-size:11px;border-radius:10px;background:#10192a}
+}
 </style>
 </head><body>
 <div class="app">
 <header>
-<div class="brand"><div class="logo">S</div><div><strong>Sahbi AI</strong><div class="sub">Personnel · privé · sans clé API</div></div></div>
-<div class="actions"><select id="model">
-<option value="auto">Auto · meilleur pour cet appareil</option>
-<option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Rapide · Llama 1B (~0,9 Go)</option>
-<option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC">Smart · Hermes 3B (~2,3 Go)</option>
-<option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">Raisonnement · DeepSeek R1 7B (~5,1 Go)</option>
-<option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Expert · Hermes 8B (~4,9 Go)</option>
-</select><button id="load" class="primary">Charger l’IA</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button id="agentToggle">⚡ Agent OFF</button><button id="skillsBtn">🧠 Skills</button><button id="memoryBtn">Mémoire</button><button id="clear">Nouveau</button></div>
+  <div class="header-inner">
+    <div class="brand"><div class="logo">S</div><div class="brand-text"><div class="brand-title">Sahbi AI</div><div class="sub">Ton assistant personnel · local-first</div></div></div>
+    <div class="actions">
+      <select id="model">
+        <option value="auto">Auto · meilleur appareil</option>
+        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Rapide 1B</option>
+        <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC">Smart 3B</option>
+        <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">Raisonnement 7B</option>
+        <option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Expert 8B</option>
+      </select>
+      <button id="load" class="primary">Charger l’IA</button>
+      <button class="desktop-extra" onclick="location.href='./builder.html'">🛠️ Builder</button>
+      <button class="desktop-extra" onclick="location.href='./sandbox.html'">🧪 Sandbox</button>
+      <button class="desktop-extra" id="agentToggle">⚡ Agent OFF</button>
+      <button class="desktop-extra" id="skillsBtn">🧠 Skills</button>
+      <button class="desktop-extra" id="memoryBtn">🧠 Mémoire</button>
+      <button class="desktop-extra" id="clear">＋ Nouveau</button>
+      <button id="menuBtn" class="mobile-menu">☰</button>
+    </div>
+  </div>
 </header>
-<main><div class="status" id="status"><b>Mode gratuit :</b> GitHub Pages héberge seulement l’interface. Le modèle IA est téléchargé par WebLLM depuis son hébergement de modèles puis stocké dans le cache de ton navigateur. Sur mobile, commence par Rapide 1B (~0,9 Go).</div><div class="chat" id="chat"></div></main>
-<div class="composer"><div class="composer-inner"><div class="inputwrap"><button id="attach" title="Ajouter un fichier">📎</button><input id="fileInput" type="file" accept=".txt,.md,.json,.csv,.html,.js,.ts,.py,.pdf,image/*" hidden><button id="webBtn" title="Recherche encyclopédique">🌐</button><textarea id="prompt" placeholder="Écris à Sahbi AI… ou /web sujet"></textarea><button id="mic">🎙️</button></div><button id="send" class="primary">Envoyer</button></div><div id="fileChip" style="max-width:980px;margin:6px auto 0;color:#94a3b8;font-size:12px"></div><div class="quick"><button data-cmd="/web ">🌐 Web</button><button data-cmd="/url ">🔗 Lire URL</button><button data-cmd="/weather ">☀️ Météo</button><button data-cmd="/calc ">🧮 Calcul</button><button data-cmd="/fx ">💱 Change</button><button data-cmd="/note ">📝 Note</button><button data-cmd="/tasks">✅ Tâches</button><button data-cmd="/skills">🧠 Skills</button><button data-cmd="/teach ">➕ Apprendre</button></div></div>
+
+<main>
+  <section class="hero">
+    <div class="hero-top">
+      <div>
+        <h1>Un cerveau. Plusieurs super-pouvoirs.</h1>
+        <p>Discute, construis des apps, teste du code, apprends de nouveaux skills, analyse tes fichiers et utilise des outils — depuis une seule interface.</p>
+        <div class="hero-badges"><span class="badge ok">● Privé par défaut</span><span class="badge">⚡ Agent</span><span class="badge">🧠 Skills</span><span class="badge">🛠️ Builder</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feature-grid">
+    <div class="feature" onclick="document.querySelector('#prompt').focus()"><div class="feature-icon">💬</div><div class="feature-title">Chat Genius</div><div class="feature-desc">Écris, analyse, traduis, réfléchis et planifie.</div></div>
+    <div class="feature" onclick="location.href='./builder.html'"><div class="feature-icon">🛠️</div><div class="feature-title">Builder Studio</div><div class="feature-desc">Crée des sites, apps et projets logiciels.</div></div>
+    <div class="feature" onclick="location.href='./sandbox.html'"><div class="feature-icon">🧪</div><div class="feature-title">Sandbox</div><div class="feature-desc">Exécute JavaScript et Python dans un labo isolé.</div></div>
+    <div class="feature" id="featureAgent"><div class="feature-icon">⚡</div><div class="feature-title">Agent</div><div class="feature-desc">Choisit automatiquement ses outils selon ta demande.</div></div>
+    <div class="feature" id="featureSkills"><div class="feature-icon">🧠</div><div class="feature-title">Skills</div><div class="feature-desc">Apprend tes méthodes et les réutilise ensuite.</div></div>
+    <div class="feature" id="featureMemory"><div class="feature-icon">🗂️</div><div class="feature-title">Mémoire</div><div class="feature-desc">Conserve tes préférences, notes, tâches et habitudes.</div></div>
+    <div class="feature" onclick="document.querySelector('#attach').click()"><div class="feature-icon">📎</div><div class="feature-title">Fichiers & OCR</div><div class="feature-desc">PDF, code, CSV, images et extraction de texte.</div></div>
+    <div class="feature" id="featureWeb"><div class="feature-icon">🌐</div><div class="feature-title">Outils Live</div><div class="feature-desc">Web, météo, change, calcul, URL et tâches.</div></div>
+  </section>
+
+  <div class="status" id="status"><b>Mode gratuit :</b> commence avec Rapide 1B. Le premier chargement télécharge le modèle puis le garde en cache sur ton appareil.</div>
+
+  <section class="chat-card">
+    <div class="chat" id="chat"></div>
+  </section>
+</main>
+
+<div class="mobile-nav">
+  <button onclick="document.querySelector('#prompt').focus()">💬<br>Chat</button>
+  <button onclick="location.href='./builder.html'">🛠️<br>Builder</button>
+  <button onclick="location.href='./sandbox.html'">🧪<br>Sandbox</button>
+  <button id="mobileMore">☰<br>Plus</button>
+</div>
+
+<div class="composer">
+  <div class="composer-inner">
+    <div class="inputwrap"><button id="attach" title="Ajouter un fichier">📎</button><input id="fileInput" type="file" accept=".txt,.md,.json,.csv,.html,.js,.ts,.py,.pdf,image/*" hidden><button id="webBtn" title="Recherche">🌐</button><textarea id="prompt" placeholder="Demande n'importe quoi à Sahbi AI…"></textarea><button id="mic">🎙️</button></div>
+    <button id="send" class="primary">Envoyer</button>
+  </div>
+  <div id="fileChip" style="max-width:1120px;margin:6px auto 0;color:#94a3b8;font-size:12px"></div>
+  <div class="quick"><button data-cmd="/web ">🌐 Web</button><button data-cmd="/url ">🔗 URL</button><button data-cmd="/weather ">☀️ Météo</button><button data-cmd="/calc ">🧮 Calcul</button><button data-cmd="/fx ">💱 Change</button><button data-cmd="/note ">📝 Note</button><button data-cmd="/tasks">✅ Tâches</button><button data-cmd="/skills">🧠 Skills</button><button data-cmd="/teach ">➕ Apprendre</button></div>
+</div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Mémoire personnelle</h2><button id="closeDrawer">✕</button></div><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -50,10 +141,34 @@ function chooseAutoModel(){
  return "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 }
 function save(){localStorage.setItem("sahbi_history",JSON.stringify(history))}
-$("#agentToggle").onclick=()=>{agentMode=!agentMode;$("#agentToggle").textContent=agentMode?"⚡ Agent ON":"⚡ Agent OFF";$("#agentToggle").style.background=agentMode?"#14532d":""};
+function toggleAgent(){agentMode=!agentMode;const label=agentMode?"⚡ Agent ON":"⚡ Agent OFF";$("#agentToggle").textContent=label;$("#agentToggle").style.background=agentMode?"#14532d":"";const fa=$("#featureAgent");if(fa)fa.style.borderColor=agentMode?"rgba(34,197,94,.55)":""}
+$("#agentToggle").onclick=toggleAgent;
+$("#featureAgent").onclick=toggleAgent;
+$("#featureSkills").onclick=()=>{$("#drawer").classList.add("show");renderSkills()};
+$("#featureMemory").onclick=()=>$("#drawer").classList.add("show");
+$("#featureWeb").onclick=()=>{prompt.value="/web ";prompt.focus()};
+const openMore=()=>$("#drawer").classList.add("show");
+$("#menuBtn").onclick=openMore;$("#mobileMore").onclick=openMore;
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
-function render(){chat.innerHTML="";if(!history.length)bubble("assistant","Salam 👋 Je suis Sahbi AI. Écris ton message et appuie sur Envoyer : je chargerai automatiquement le modèle si nécessaire.");for(const m of history)bubble(m.role,m.content)}render();
-load.onclick=async()=>{if(engine)return;load.disabled=true;load.textContent="Chargement…";try{let selected=$("#model").value;if(selected==="auto"){selected=chooseAutoModel();status.innerHTML="<b>Mode auto :</b> modèle choisi selon la mémoire de l’appareil…"}engine=await webllm.CreateMLCEngine(selected,{initProgressCallback:p=>status.innerHTML="<b>Chargement :</b> "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});status.innerHTML="<b>Prêt ✅</b> L’IA fonctionne sur ton appareil, sans clé API.";send.disabled=false;load.textContent="IA prête"}catch(e){console.error(e);load.disabled=false;load.textContent="Réessayer";status.innerHTML="<b>Échec du chargement.</b> Essaie Chrome/Edge récent avec WebGPU, ou le modèle 1B."}};
+function render(){chat.innerHTML="";if(!history.length)bubble("assistant","Salam 👋 Je suis Sahbi AI. Utilise les cartes au-dessus pour découvrir mes fonctions, ou écris directement ce que tu veux faire.");for(const m of history)bubble(m.role,m.content)}render();
+async function ensureEngine(){
+  if(engine)return true;
+  if(load.disabled)return false;
+  if(!("gpu" in navigator)){status.innerHTML="<b>WebGPU indisponible.</b> Ouvre Sahbi AI dans Chrome récent, puis réessaie avec Rapide 1B.";return false}
+  load.disabled=true;load.textContent="Chargement…";send.textContent="Patiente…";
+  try{
+    let selected=$("#model").value;
+    if(selected==="auto")selected=chooseAutoModel();
+    engine=await webllm.CreateMLCEngine(selected,{initProgressCallback:p=>status.innerHTML="<b>Chargement :</b> "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});
+    status.innerHTML="<b>Prêt ✅</b> Sahbi AI est chargé sur ton appareil.";
+    load.textContent="IA prête";send.textContent="Envoyer";return true;
+  }catch(e){
+    console.error(e);load.disabled=false;load.textContent="Réessayer";send.textContent="Envoyer";
+    status.innerHTML="<b>Échec du chargement.</b> Essaie Rapide 1B dans Chrome récent.";
+    return false;
+  }
+}
+load.onclick=ensureEngine;
 async function readUrl(url){let u=url.trim();if(!/^https?:\/\//i.test(u))u="https://"+u;const proxy="https://r.jina.ai/http://"+u.replace(/^https?:\/\//i,"");const r=await fetch(proxy);if(!r.ok)throw new Error("Lecture URL impossible");return (await r.text()).slice(0,26000)}
 async function getWeather(place){let p=place.trim();const geo=await fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&format=json&name="+encodeURIComponent(p)).then(r=>r.json());const g=geo.results?.[0];if(!g)throw new Error("Lieu introuvable");const w=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${g.latitude}&longitude=${g.longitude}&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`).then(r=>r.json());return `Météo pour ${g.name}, ${g.country||""}:\nActuel: ${w.current?.temperature_2m}°C, ressenti ${w.current?.apparent_temperature}°C, vent ${w.current?.wind_speed_10m} km/h, précipitations ${w.current?.precipitation} mm.\n3 jours:\n`+(w.daily?.time||[]).map((d,i)=>`${d}: ${w.daily.temperature_2m_min[i]}–${w.daily.temperature_2m_max[i]}°C, pluie max ${w.daily.precipitation_probability_max[i]}%`).join("\n")}
 function safeCalc(expr){if(!/^[0-9+\-*/%().,\s^]+$/.test(expr))throw new Error("Expression non autorisée");const x=expr.replace(/,/g,".").replace(/\^/g,"**");return Function('"use strict";return ('+x+')')()}
