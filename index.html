@@ -617,6 +617,7 @@ async function generateFinalProduct(userText){
 
      const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+(d.css||"")+'</style></head><body>'+(d.html||"")+'<script>'+String(d.js||"").replace(/<\/script>/g,"<\\/script>")+'<\/script></body></html>';
      downloadBlob(new Blob([html],{type:"text/html;charset=utf-8"}),"sahbi-free-max-app.html");
+     localStorage.setItem("sahbi_last_delivery",JSON.stringify({type:"web",name:"sahbi-free-max-app.html",description:"Application web autonome générée par Sahbi. Ouvre le fichier dans ton navigateur pour la tester.",request:userText}));
      const done="🏁 Free Max · projet web prêt ✅\nFichier HTML autonome livré.";
      (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
    }
@@ -636,6 +637,7 @@ async function generateFinalProduct(userText){
    if(!files.some(x=>/README\.md$/i.test(x.path||"")))files.push({path:"README.md",content:"# Sahbi Free Max\n\n"+(d.summary||"Projet")});
    files.push({path:"SAHBI-DELIVERY.txt",content:"Résumé:\n"+(d.summary||"")+"\n\nRun:\n"+(d.run||"Voir README")});
    downloadBlob(makeTarBlob(files),"sahbi-free-max-software.tar");
+   localStorage.setItem("sahbi_last_delivery",JSON.stringify({type:"software",name:"sahbi-free-max-software.tar",description:"Archive du projet logiciel généré par Sahbi.",request:userText}));
    const done="🏁 Free Max · projet logiciel prêt ✅\nArchive TAR livrée.";
    (progress._body||progress).textContent=done;history.push({role:"assistant",content:done});save();return true;
  }catch(e){
@@ -656,7 +658,18 @@ async function generateFinalProduct(userText){
  }
 }
 
+function localDeliveryReply(t){
+ const s=String(t||"").trim().toLowerCase();
+ if(!/(c quoi|c'est quoi|ce quoi|ça sert à quoi|ca sert a quoi|qu'est-ce que tu as fait|qu est ce que tu as fait|ouvre.*ça|ouvre.*ca|comment je l'utilise|comment l'utiliser)/i.test(s))return "";
+ try{
+   const d=JSON.parse(localStorage.getItem("sahbi_last_delivery")||"null");
+   if(!d)return "";
+   if(d.type==="web")return "C’est l’application web que je viens de générer 😁 Le fichier "+d.name+" est autonome : ouvre-le dans Chrome pour la tester. Demande d’origine : "+d.request;
+   return "C’est le projet logiciel que je viens de générer 😁 Il est dans "+d.name+". "+d.description;
+ }catch{return ""}
+}
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
+const deliveryReply=localDeliveryReply(text);if(deliveryReply){prompt.value="";resizePrompt();history.push({role:"user",content:text},{role:"assistant",content:deliveryReply});save();bubble("user",text);bubble("assistant",deliveryReply);return;}
 const quick=localQuickReply(text);if(quick){prompt.value="";resizePrompt();history.push({role:"user",content:text},{role:"assistant",content:quick});save();bubble("user",text);bubble("assistant",quick);return;}
 if(localStorage.getItem("sahbi_pending_security_audit")==="1" && extractFirstUrl(text)){
   prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;
