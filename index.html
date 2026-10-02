@@ -100,11 +100,10 @@ main{padding:18px 14px 160px}
     <button id="send" class="primary">Envoyer</button>
   </div>
   <div id="fileChip" style="max-width:1120px;margin:6px auto 0;color:#94a3b8;font-size:12px"></div>
-  <div class="quick"><button data-cmd="/web ">🌐 Web</button><button data-cmd="/url ">🔗 URL</button><button data-cmd="/weather ">☀️ Météo</button><button data-cmd="/calc ">🧮 Calcul</button><button data-cmd="/fx ">💱 Change</button><button data-cmd="/note ">📝 Note</button><button data-cmd="/tasks">✅ Tâches</button><button data-cmd="/skills">🧠 Skills</button><button data-cmd="/teach ">➕ Apprendre</button></div>
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button></div>
+<div class="row"><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -140,8 +139,15 @@ const fm=$("#featureMemory");if(fm)fm.onclick=()=>$("#drawer").classList.add("sh
 const fw=$("#featureWeb");if(fw)fw.onclick=()=>{prompt.value="/web ";prompt.focus()};
 const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
+$("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
-function render(){chat.innerHTML="";if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");for(const m of history)bubble(m.role,m.content)}render();
+function render(){
+ history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable/i.test(m.content||"")));
+ save();
+ chat.innerHTML="";
+ if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
+ for(const m of history)bubble(m.role,m.content)
+}render();
 async function ensureEngine(){
   if(engine)return true;
   if(load.disabled)return false;
