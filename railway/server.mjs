@@ -173,6 +173,11 @@ const server = http.createServer(async (req, res) => {
         content: String(m.content || "").slice(0, 24000),
       }));
 
+      normalized.unshift({
+        role: "system",
+        content: "Return only the final answer for the user. Never reveal chain-of-thought, hidden reasoning, scratch work, internal analysis, or a thinking process. Do not write phrases such as 'Here is my thinking process', 'Analysis', or step-by-step private reasoning. Keep internal reasoning private and answer naturally, directly, and concisely in the user's language."
+      });
+
       if (owner) {
         normalized.unshift({
           role: "system",
@@ -191,6 +196,7 @@ const server = http.createServer(async (req, res) => {
           messages: normalized,
           temperature: owner ? 0.45 : 0.5,
           max_tokens: requestedMaxTokens,
+          reasoning: { enabled: false, exclude: true },
           stream: false,
         }),
       });
@@ -202,7 +208,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       const data = await upstream.json();
-      const text = data?.choices?.[0]?.message?.content || "";
+      let text = String(data?.choices?.[0]?.message?.content || "").trim();
+      if (/here(?:'|’)s a thinking process|here is (?:my|a) thinking process|chain[- ]of[- ]thought|^analysis\s*:/i.test(text)) {
+        const lines = text.split("\n");
+        const finalIndex = lines.findIndex(line => /^(final|answer|réponse finale|response)\s*[:：]/i.test(line.trim()));
+        if (finalIndex >= 0) text = lines.slice(finalIndex + 1).join("\n").trim();
+      }
       return json(res, 200, { text, owner }, origin);
     } catch (error) {
       console.error("chat_error", error);
