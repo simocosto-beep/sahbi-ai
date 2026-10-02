@@ -430,6 +430,80 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true }, origin);
   }
 
+  if (req.method === "POST" && url.pathname === "/api/build") {
+    const owner = verifyOwnerToken(ownerTokenFrom(req));
+    if (!owner) return json(res, 401, { error: "owner_required", message: "Mode Owner requis pour Build Lab." }, origin);
+
+    const rate = consumeRate(req, true);
+    if (!rate.ok) return json(res, 429, { error: "rate_limited", retryAfter: rate.retryAfter }, origin);
+
+    try {
+      const body = await readBody(req);
+      const language = String(body.language || "").toLowerCase();
+      const source = String(body.source || "");
+      const stdin = String(body.stdin || "");
+
+      const languageIds = {
+        c: 103,
+        cpp: 105,
+        javascript: 102,
+        python: 113,
+        rust: 108,
+        java: 91,
+      };
+      const languageId = languageIds[language];
+      if (!languageId) return json(res, 400, { error: "unsupported_language" }, origin);
+      if (!source || source.length > 30000) return json(res, 400, { error: "source_too_large", message: "Source limité à 30 000 caractères par build." }, origin);
+      if (stdin.length > 4000) return json(res, 400, { error: "stdin_too_large" }, origin);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      try {
+        const endpoint = "https://ce.judge0.com/submissions?base64_encoded=false&wait=true";
+        const upstream = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            language_id: languageId,
+            source_code: source,
+            stdin,
+            cpu_time_limit: 5,
+            wall_time_limit: 8,
+            memory_limit: 262144,
+            max_processes_and_or_threads: 32,
+            enable_network: false,
+          }),
+          signal: controller.signal,
+        });
+        const data = await upstream.json().catch(() => ({}));
+        if (!upstream.ok) return json(res, 502, { error: "judge0_unavailable", message: "Build Lab indisponible.", detail: data?.error || null }, origin);
+
+        return json(res, 200, {
+          ok: Number(data?.status?.id) === 3,
+          statusId: data?.status?.id ?? null,
+          status: data?.status?.description || "Unknown",
+          stdout: String(data?.stdout || "").slice(0, 8000),
+          stderr: String(data?.stderr || "").slice(0, 8000),
+          compileOutput: String(data?.compile_output || "").slice(0, 12000),
+          message: String(data?.message || "").slice(0, 4000),
+          exitCode: data?.exit_code ?? null,
+          time: data?.time ?? null,
+          memory: data?.memory ?? null,
+          language,
+          runner: "judge0",
+        }, origin);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (error) {
+      const timeout = error && error.name === "AbortError";
+      return json(res, timeout ? 504 : 503, {
+        error: timeout ? "build_timeout" : "build_error",
+        message: timeout ? "Le build a dépassé le délai." : "Le Build Lab est momentanément indisponible."
+      }, origin);
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/security/check") {
     const owner = verifyOwnerToken(ownerTokenFrom(req));
     if (!owner) return json(res, 401, { error: "owner_required", message: "Mode Owner requis pour Security Lab." }, origin);

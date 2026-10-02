@@ -84,6 +84,18 @@ async function cloudChat(messages,maxTokens=7000){
   }finally{clearTimeout(timer)}
 }
 const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||7000);return {choices:[{message:{content:text}}]}}}}};
+async function judgeBuild(language,source,stdin=""){
+  if(!ownerToken)throw new Error("Active d'abord le mode Owner dans Sahbi pour utiliser Build Lab.");
+  const r=await fetch(SAHBI_API+"/api/build",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":ownerToken},
+    body:JSON.stringify({language,source,stdin})
+  });
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(data?.message||data?.error||("Build Lab HTTP "+r.status));
+  return data;
+}
+
 async function remoteRun(language,code,stdin=""){
   if(!ownerToken)throw new Error("Active d'abord le mode Owner dans Sahbi pour utiliser le Runner.");
   const r=await fetch(SAHBI_API+"/api/run",{
@@ -213,25 +225,29 @@ async function runLocalTests(){
    if(chosen==="systems"&&!paths.some(p=>/Cargo\.toml$|Makefile$|CMakeLists\.txt$|\.c$|\.rs$/i.test(p)))checks.push("Projet système: aucun fichier de build/source bas niveau reconnu.");
 
    let remote="";
-   const candidate=projectFiles.find(f=>/\.(py|js|cpp|java)$/i.test(f.path||"") && String(f.content||"").length<=900);
+   const candidate=projectFiles.find(f=>/\.(py|js|c|cpp|rs|java)$/i.test(f.path||"") && String(f.content||"").length<=30000);
    if(candidate && ownerToken){
      const ext=(candidate.path.split(".").pop()||"").toLowerCase();
-     const lang=ext==="py"?"python":ext==="js"?"javascript":ext==="cpp"?"cpp":"java";
+     const lang=ext==="py"?"python":ext==="js"?"javascript":ext==="c"?"c":ext==="cpp"?"cpp":ext==="rs"?"rust":"java";
      try{
-       log.textContent="🧪 Runner cloud: "+candidate.path+"…";
-       const rr=await remoteRun(lang,String(candidate.content||""));
-       remote="\n\nRunner cloud ("+candidate.path+"):\nStatus: "+rr.status+"\n"+(rr.stdout?"STDOUT:\n"+rr.stdout:"")+(rr.stderr?"\nSTDERR:\n"+rr.stderr:"");
-       if(!rr.ok)checks.push("Runner: "+rr.status);
+       log.textContent="🧪 Build Lab: "+candidate.path+"…";
+       const rr=await judgeBuild(lang,String(candidate.content||""));
+       remote="\n\nBuild Lab ("+candidate.path+"):\nStatus: "+rr.status+
+         (rr.compileOutput?"\nCOMPILE:\n"+rr.compileOutput:"")+
+         (rr.stdout?"\nSTDOUT:\n"+rr.stdout:"")+
+         (rr.stderr?"\nSTDERR:\n"+rr.stderr:"")+
+         (rr.exitCode!==null?"\nExit: "+rr.exitCode:"");
+       if(!rr.ok)checks.push("Build Lab: "+rr.status);
      }catch(e){
-       remote="\n\nRunner indisponible: "+(e.message||e);
+       remote="\n\nBuild Lab indisponible: "+(e.message||e);
      }
    }else if(!ownerToken){
-     remote="\n\n💡 Active le mode Owner pour exécuter automatiquement les petits fichiers Python/JS/C++/Java dans la sandbox.";
+     remote="\n\n💡 Active le mode Owner pour compiler/exécuter Python, JS, C, C++, Rust ou Java.";
    }else{
-     remote="\n\nℹ️ Aucun fichier unique ≤900 caractères compatible avec le Runner rapide. Validation structurelle uniquement.";
+     remote="\n\nℹ️ Aucun fichier source unique compatible avec Build Lab. Validation structurelle uniquement.";
    }
 
-   log.textContent=(checks.length?"⚠️ Validation:\n- "+checks.join("\n- "):"✅ Structure du projet cohérente.")+remote+"\n\nRust/kernel et projets multi-fichiers nécessitent encore une sandbox de build dédiée.";
+   log.textContent=(checks.length?"⚠️ Validation:\n- "+checks.join("\n- "):"✅ Structure du projet cohérente.")+remote+"\n\nLes projets multi-fichiers Cargo/CMake seront ajoutés dans la prochaine étape.";
    return;
  }
  const issues=basicStaticChecks();
