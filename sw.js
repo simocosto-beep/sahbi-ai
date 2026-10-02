@@ -1,4 +1,4 @@
-const CACHE="sahbi-ai-v27";
+const CACHE="sahbi-ai-v28";
 const CORE=["./","./index.html","./manifest.json"];
 
 self.addEventListener("install",event=>{
