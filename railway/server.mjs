@@ -252,6 +252,60 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true }, origin);
   }
 
+  if (req.method === "POST" && url.pathname === "/api/run") {
+    const owner = verifyOwnerToken(ownerTokenFrom(req));
+    if (!owner) return json(res, 401, { error: "owner_required", message: "Mode Owner requis pour exécuter du code." }, origin);
+
+    const rate = consumeRate(req, true);
+    if (!rate.ok) {
+      return json(res, 429, { error: "rate_limited", message: "Trop d'exécutions. Réessaie dans quelques secondes.", retryAfter: rate.retryAfter }, origin);
+    }
+
+    try {
+      const body = await readBody(req);
+      const language = String(body.language || "").toLowerCase();
+      const code = String(body.code || "");
+      const stdin = String(body.stdin || "");
+
+      const allowed = new Set(["python","javascript","cpp","java"]);
+      if (!allowed.has(language)) return json(res, 400, { error: "unsupported_language", message: "Langage non supporté par le runner rapide." }, origin);
+      if (!code || code.length > 900) return json(res, 400, { error: "code_too_large", message: "Le runner rapide accepte jusqu'à 900 caractères par test." }, origin);
+      if (stdin.length > 900) return json(res, 400, { error: "stdin_too_large" }, origin);
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+      try {
+        const upstream = await fetch("https://runlet.codealong.live/execute", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ language, code, stdin }),
+          signal: controller.signal,
+        });
+        const data = await upstream.json().catch(() => ({}));
+        if (!upstream.ok) {
+          return json(res, 502, { error: "runner_unavailable", message: "Le runner externe n'a pas accepté ce test.", detail: data?.detail || null }, origin);
+        }
+        return json(res, 200, {
+          ok: data.status === "OK",
+          status: data.status || "UNKNOWN",
+          stdout: String(data.stdout || "").slice(0, 4000),
+          stderr: String(data.stderr || "").slice(0, 4000),
+          time: data.time ?? null,
+          memory: data.memory ?? null,
+          runner: "runlet",
+        }, origin);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (error) {
+      const timeout = error && error.name === "AbortError";
+      return json(res, timeout ? 504 : 503, {
+        error: timeout ? "runner_timeout" : "runner_error",
+        message: timeout ? "Le runner a dépassé le délai." : "Le runner est momentanément indisponible."
+      }, origin);
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/chat") {
     if (!AI_BASE_URL || !AI_API_KEY || !AI_MODEL) {
       return json(res, 503, { error: "provider_not_configured", message: "Le moteur IA n'est pas configuré." }, origin);
