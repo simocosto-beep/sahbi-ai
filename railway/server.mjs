@@ -168,15 +168,29 @@ async function callModel(model, messages, owner, maxTokens, timeoutMs) {
 }
 
 async function callWithFallback(messages, owner, maxTokens) {
-  const candidates = [
-    { model: AI_MODEL, timeout: 8000 },
-    { model: "stealth/space-bunny-alpha", timeout: 9000 },
-  ];
+  const builderLike = maxTokens >= 3000;
+  const candidates = builderLike
+    ? [
+        { model: AI_MODEL, timeout: 10000 },
+        { model: "openrouter/free", timeout: 14000 },
+        { model: "stealth/space-bunny-alpha", timeout: 8000 },
+      ]
+    : [
+        { model: AI_MODEL, timeout: 8000 },
+        { model: "stealth/space-bunny-alpha", timeout: 9000 },
+      ];
 
   let lastError;
   for (const candidate of candidates) {
     try {
       const data = await callModel(candidate.model, messages, owner, maxTokens, candidate.timeout);
+      const text = finalText(data);
+      if (!text) {
+        const empty = new Error("empty_model_response");
+        console.warn("model_attempt_failed", candidate.model, "empty_response");
+        lastError = empty;
+        continue;
+      }
       return { data, modelUsed: candidate.model };
     } catch (error) {
       lastError = error;
