@@ -136,11 +136,23 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
   }
 }
 
+function looksLikeDarija(messages) {
+  const text = messages.filter(m => m.role === "user").slice(-3).map(m => String(m.content || "")).join(" ").toLowerCase();
+  return /(\bwach\b|\bash\b|\bchno\b|\bshno\b|\bkifach\b|\bbghit\b|\bbghiti\b|\b3lach\b|\bfin\b|\bdaba\b|\bsahbi\b|\bkhoya\b|\bdir\b|\bndir\b|\bkat\s*hder\b|\bkathder\b|\bkatkhreb9\b|\bkhreb9\b|\bmzyan\b|\bzwin\b|\biwa\b|\bwakha\b|\bla bas\b|\blabas\b|\bhamdollah\b)/i.test(text);
+}
+
 async function callWithFallback(normalized, owner, maxTokens) {
-  const candidates = [
-    { model: AI_MODEL, timeout: 8000 },
-    { model: "stealth/space-bunny-alpha", timeout: 10000 },
-  ];
+  const darija = looksLikeDarija(normalized);
+  const candidates = darija
+    ? [
+        { model: "google/gemma-4-31b-it:free", timeout: 12000 },
+        { model: AI_MODEL, timeout: 8000 },
+        { model: "stealth/space-bunny-alpha", timeout: 10000 },
+      ]
+    : [
+        { model: AI_MODEL, timeout: 8000 },
+        { model: "stealth/space-bunny-alpha", timeout: 10000 },
+      ];
 
   let lastError;
   for (const candidate of candidates) {
@@ -230,7 +242,7 @@ const server = http.createServer(async (req, res) => {
 
       normalized.unshift({
         role: "system",
-        content: "Return only the final answer for the user. Never reveal chain-of-thought, hidden reasoning, scratch work, internal analysis, or a thinking process. Do not write phrases such as 'Here is my thinking process', 'Analysis', or step-by-step private reasoning. Keep internal reasoning private and answer naturally, directly, and concisely in the user's language."
+        content: "Return only the final answer for the user. Never reveal chain-of-thought, hidden reasoning, scratch work, internal analysis, or a thinking process. Do not write phrases such as 'Here is my thinking process', 'Analysis', or step-by-step private reasoning. Keep internal reasoning private and answer naturally, directly, and concisely in the user's language. If the user writes Moroccan Darija, especially Latin/Arabizi Darija, reply in natural Moroccan Darija. Do not translate every phrase, do not mix in French unless the user does, and do not invent fake Darija. Prefer short authentic Moroccan phrasing."
       });
 
       if (owner) {
