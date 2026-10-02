@@ -453,32 +453,57 @@ async function runAttachedCodeFromChat(){
    return true;
  }catch(e){(progress._body||progress).textContent="Erreur Build Lab : "+(e.message||e);return true}
 }
+function getLastSecurityReport(){
+ let report=localStorage.getItem("sahbi_last_security_report")||"";
+ if(report)return report;
+ for(let i=history.length-1;i>=0;i--){
+   const txt=String(history[i]?.content||"");
+   if(history[i]?.role==="assistant" && /Audit terminé|Security Lab/i.test(txt)){
+     report=txt;
+     localStorage.setItem("sahbi_last_security_report",report);
+     const m=txt.match(/https?:\/\/[^\s·]+/i);
+     if(m)localStorage.setItem("sahbi_last_security_target",m[0]);
+     return report;
+   }
+ }
+ return "";
+}
 function looksLikeSecurityRemediation(t){
- const s=String(t||"").toLowerCase();
- return /(corrige|répare|repare|fix|résous|resous).{0,50}(ce que|ça|ca|audit|failles?|trouvé|trouve|problèmes?|problemes?)/i.test(s) ||
-        /(corrige|répare|repare|fix).{0,30}(security|sécurité|csp|cors|headers?)/i.test(s);
+ const s=String(t||"").toLowerCase().trim();
+ if(!getLastSecurityReport())return false;
+ return /\b(corrige|corriger|répare|repare|fix|résous|resous|améliore|ameliore)\b/i.test(s);
+}
+function localSecurityRemediation(report){
+ const items=[];
+ if(/Content-Security-Policy absent/i.test(report)){
+   items.push("1. CSP — ajouter une Content-Security-Policy adaptée au site. Sur Vercel/Next.js, la définir dans les headers de configuration (next.config.* ou vercel.json selon le projet) puis vérifier que les scripts/styles réellement utilisés restent autorisés.");
+ }
+ if(/CORS permissif|Access-Control-Allow-Origin=\*/i.test(report)){
+   items.push("2. CORS — remplacer '*' par les origines réellement nécessaires pour les routes/API qui n’ont pas vocation à être publiques. Ne pas restreindre aveuglément les fichiers statiques si ce header vient simplement du CDN.");
+ }
+ if(/Header Server exposé/i.test(report)){
+   items.push("3. Header Server — information de faible sévérité. Sur Vercel, une partie de cette exposition est gérée par la plateforme; ne pas casser le déploiement juste pour masquer ce header.");
+ }
+ if(/HSTS absent/i.test(report))items.push("4. HSTS — activer Strict-Transport-Security après avoir confirmé que tout le domaine et les sous-domaines utilisent HTTPS.");
+ if(/X-Content-Type-Options absent/i.test(report))items.push("5. Ajouter X-Content-Type-Options: nosniff.");
+ if(/Referrer-Policy absent/i.test(report))items.push("6. Ajouter une Referrer-Policy appropriée.");
+ if(/Permissions-Policy absent/i.test(report))items.push("7. Ajouter Permissions-Policy en n’autorisant que les fonctions nécessaires.");
+ if(!items.length)items.push("Aucune correction automatique connue pour les findings présents. Ouvre le détail du rapport avant de modifier la configuration.");
+ return items.join("\n\n");
 }
 async function securityRemediationFromChat(){
- const report=localStorage.getItem("sahbi_last_security_report")||"";
- const target=localStorage.getItem("sahbi_last_security_target")||"";
+ const report=getLastSecurityReport();
  const progress=bubble("assistant","🧯 J’analyse le dernier audit…");
- if(!report){(progress._body||progress).textContent="Je n’ai pas de rapport Security Lab récent dans cette session. Lance d’abord un audit.";return true}
- const promptText=`À partir de ce rapport Security Lab, donne uniquement un plan de correction concret, court et priorisé.
-Ne prétends pas avoir modifié un repo ou redéployé quoi que ce soit. Si une correction nécessite GitHub/Vercel/Supabase, dis précisément quel fichier/réglage changer.
-Cible: ${target}
-RAPPORT:
-${report}`;
- try{
-   const answer=await cloudChat([{role:"system",content:promptText}],900);
-   const out="🧯 Plan de correction\n\n"+answer+"\n\nℹ️ Je peux analyser et préparer les corrections, mais je n’ai pas encore l’accès d’écriture GitHub/Vercel dans Sahbi pour les appliquer automatiquement.";
-   (progress._body||progress).textContent=out;
-   history.push({role:"assistant",content:out});save();
-   return true;
- }catch(e){
-   (progress._body||progress).textContent="🧯 Correction à appliquer d’après le dernier audit:\n- Ajouter une Content-Security-Policy adaptée\n- Vérifier si CORS '*' est réellement nécessaire\n- Réduire les headers d’exposition serveur si possible\n\nJe n’ai pas encore l’accès d’écriture GitHub/Vercel pour appliquer ces changements automatiquement.";
-   return true;
- }
+ if(!report){(progress._body||progress).textContent="Je n’ai pas retrouvé de rapport Security Lab récent. Relance simplement l’audit.";return true}
+ const target=localStorage.getItem("sahbi_last_security_target")||"la cible";
+ const plan=localSecurityRemediation(report);
+ const out="🧯 Corrections proposées pour "+target+"\n\n"+plan+
+  "\n\n✅ Aucun appel IA nécessaire pour ce plan.\nℹ️ Je peux préparer précisément les fichiers à modifier, mais Sahbi n’a pas encore de connecteur d’écriture GitHub/Vercel intégré pour appliquer et redéployer tout seul.";
+ (progress._body||progress).textContent=out;
+ history.push({role:"assistant",content:out});save();
+ return true;
 }
+
 function looksLikeBuildRequest(t){
  const s=t.toLowerCase();
  return /(cr[eé]e|construis|fabrique|d[eé]veloppe|build|make).{0,40}(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme)/i.test(s);
