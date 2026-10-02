@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020"><title>Sahbi AI Builder</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--panel:#101827;--line:#26324d;--text:#f8fafc;--muted:#94a3b8;--accent:#7c3aed}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+header{height:64px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#0b1020;position:sticky;top:0;z-index:5}
+.brand{display:flex;gap:10px;align-items:center}.logo{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#7c3aed,#06b6d4);display:grid;place-items:center;font-weight:800}
+button,select,textarea,input{font:inherit}button,select{border:1px solid var(--line);background:#172036;color:#fff;border-radius:10px;padding:8px 11px}button{cursor:pointer}.primary{background:var(--accent);border-color:transparent}.danger{background:#451a1a}
+.grid{display:grid;grid-template-columns:420px 1fr;min-height:calc(100vh - 64px)}
+.side{border-right:1px solid var(--line);padding:14px;overflow:auto}.side textarea{width:100%;min-height:150px;background:#0f172a;border:1px solid var(--line);color:#fff;border-radius:12px;padding:12px;resize:vertical}
+.label{font-size:12px;color:var(--muted);margin:12px 0 6px}.row{display:flex;gap:8px;flex-wrap:wrap}
+.status{margin-top:12px;background:#0f172a;border:1px solid var(--line);padding:10px;border-radius:10px;font-size:13px;color:#cbd5e1}
+.projects{margin-top:14px}.project{padding:9px;border:1px solid var(--line);border-radius:10px;margin:6px 0;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.work{display:grid;grid-template-rows:46px 1fr 46%;min-width:0}.tabs{display:flex;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);background:#0d1423}.tabs button.active{background:#312e81}
+.editor{width:100%;height:100%;resize:none;border:0;outline:0;background:#0b1220;color:#dbeafe;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;padding:14px}
+.preview{border-top:1px solid var(--line);background:#fff}.preview iframe{width:100%;height:100%;border:0;background:#fff}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
+</style>
+</head><body>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ Télécharger</button></div></header>
+<div class="grid">
+<section class="side">
+  <div class="label">Modèle</div>
+  <select id="model">
+    <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Rapide 1B</option>
+    <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC" selected>Hermes 3B</option>
+    <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">DeepSeek R1 7B</option>
+    <option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Hermes 8B</option>
+  </select>
+  <button id="load" class="primary">Charger Builder AI</button>
+  <div class="label">Décris ce que tu veux construire</div>
+  <textarea id="brief" placeholder="Ex: Une app de petites annonces au Maroc avec recherche, cartes, favoris et design premium…"></textarea>
+  <div class="row">
+    <button id="build" class="primary" disabled>⚡ Construire</button>
+    <button id="improve" disabled>✨ Améliorer</button>
+    <button id="fix" disabled>🧯 Corriger</button>
+  </div>
+  <div class="status" id="status">Charge le modèle. Tout le code est généré sur ton appareil.</div>
+  <div class="projects">
+    <div class="label">Projets locaux</div>
+    <div id="projectList"></div>
+    <div class="row"><input id="projectName" placeholder="Nom du projet" style="flex:1;background:#0f172a;color:white;border:1px solid var(--line);border-radius:10px;padding:8px"><button id="save">💾 Sauver</button></div>
+  </div>
+</section>
+<section class="work">
+  <div class="tabs"><button data-tab="html" class="active">HTML</button><button data-tab="css">CSS</button><button data-tab="js">JS</button><span style="margin-left:auto;color:#94a3b8;font-size:12px">Preview automatique</span></div>
+  <textarea id="editor" class="editor"></textarea>
+  <div class="preview"><iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe></div>
+</section>
+</div>
+<script type="module">
+import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+const $=s=>document.querySelector(s);
+let engine=null,current="html";
+let files={html:`<main style="font-family:system-ui;padding:40px"><h1>Sahbi AI Builder</h1><p>Décris ton application puis clique Construire.</p></main>`,css:"",js:""};
+function show(){ $("#editor").value=files[current]; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===current)); preview();}
+function preview(){const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;$("#frame").srcdoc=doc}
+$("#editor").oninput=e=>{files[current]=e.target.value;preview()};
+document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{files[current]=$("#editor").value;current=b.dataset.tab;show()});
+show();
+
+$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
+
+function extract(raw){
+ const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error("Réponse de code invalide");
+ const d=JSON.parse(m[0]); return {html:d.html||"",css:d.css||"",js:d.js||""};
+}
+async function ask(mode){
+ if(!engine)return;
+ const brief=$("#brief").value.trim();
+ $("#status").textContent=mode==="build"?"Construction…":mode==="fix"?"Diagnostic et correction…":"Amélioration…";
+ const spec=`Tu es Sahbi AI Builder, architecte logiciel et designer frontend senior.
+Tu dois retourner UNIQUEMENT un objet JSON valide avec exactement ces clés: {"html":"...","css":"...","js":"..."}.
+Aucun markdown, aucune explication avant/après.
+Crée une application web complète, responsive, élégante et fonctionnelle en HTML/CSS/JS vanilla. Aucun backend réel: simule les données avec localStorage si nécessaire.
+Les boutons doivent fonctionner. Ajoute validation, états vides, messages d'erreur, accessibilité et responsive mobile.
+N'utilise aucune dépendance sauf via CDN si absolument nécessaire.
+MODE: ${mode}
+DEMANDE: ${brief||"Améliore l'application existante."}
+CODE ACTUEL:
+HTML:
+${files.html.slice(0,12000)}
+CSS:
+${files.css.slice(0,9000)}
+JS:
+${files.js.slice(0,12000)}
+`;
+ try{
+   const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:mode==="fix"?0.15:.45,max_tokens:5000});
+   files=extract(r.choices?.[0]?.message?.content||""); current="html";show();$("#status").textContent="Terminé ✅ — teste la preview puis demande une amélioration.";
+ }catch(e){$("#status").textContent="Erreur Builder: "+(e.message||e)}
+}
+$("#build").onclick=()=>ask("build");$("#improve").onclick=()=>ask("improve");$("#fix").onclick=()=>ask("fix");
+
+function projects(){return JSON.parse(localStorage.getItem("sahbi_builder_projects")||"{}")}
+function renderProjects(){const p=projects(),box=$("#projectList");box.innerHTML="";Object.keys(p).forEach(name=>{const d=document.createElement("div");d.className="project";const n=document.createElement("span");n.textContent=name;n.style.cursor="pointer";n.onclick=()=>{files=p[name].files;$("#brief").value=p[name].brief||"";$("#projectName").value=name;current="html";show()};const del=document.createElement("button");del.textContent="🗑";del.className="danger";del.onclick=()=>{const q=projects();delete q[name];localStorage.setItem("sahbi_builder_projects",JSON.stringify(q));renderProjects()};d.append(n,del);box.appendChild(d)})}
+$("#save").onclick=()=>{const name=$("#projectName").value.trim()||("Projet "+new Date().toLocaleString());const p=projects();p[name]={files,brief:$("#brief").value,updated:new Date().toISOString()};localStorage.setItem("sahbi_builder_projects",JSON.stringify(p));$("#projectName").value=name;renderProjects();$("#status").textContent="Projet sauvegardé localement ✅"};renderProjects();
+
+$("#download").onclick=async()=>{const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;const blob=new Blob([doc],{type:"text/html"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=($("#projectName").value.trim()||"sahbi-app").replace(/[^a-z0-9-_]+/gi,"-").toLowerCase()+".html";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
+</script></body></html>
