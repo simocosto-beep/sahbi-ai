@@ -139,7 +139,7 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
 async function callWithFallback(normalized, owner, maxTokens) {
   const candidates = [
     { model: AI_MODEL, timeout: 8000 },
-    { model: "inclusionai/ling-3.0-flash:free", timeout: 10000 },
+    { model: "stealth/space-bunny-alpha", timeout: 10000 },
   ];
 
   let lastError;
