@@ -81,7 +81,7 @@ main{padding:18px 14px 160px}
     </div>
   </section>
 
-  <div class="status" id="status"><b>Mode Cloud :</b> aucune IA lourde n'est chargée sur ton téléphone. Le service peut demander une autorisation Puter lors de la première utilisation.</div>
+  <div class="status" id="status"><b>Mode Cloud :</b> aucune IA lourde n'est chargée sur ton téléphone. Une session invitée temporaire sera créée automatiquement à la première demande.</div>
 
   <section class="chat-card">
     <div class="chat" id="chat"></div>
@@ -120,7 +120,23 @@ function isGpuCrash(e){
  const m=String(e?.message||e||"");
  return /GPUBuffer|mapAsync|device lost|WebGPU|unmapped before mapping/i.test(m);
 }
+async function ensureGuestSession(){
+  if(!window.puter?.auth||!window.puter?.ai?.chat) throw new Error("Cloud Puter indisponible");
+  if(typeof puter.auth.isSignedIn==="function" && puter.auth.isSignedIn()) return true;
+  status.innerHTML="<b>Première utilisation…</b> création d’une session invitée temporaire.";
+  try{
+    await puter.auth.signIn({attempt_temp_user_creation:true});
+    status.innerHTML="<b>Prêt ✅</b> Session invitée active — aucun compte permanent requis.";
+    return true;
+  }catch(e){
+    const code=e?.error||e?.code||"";
+    if(code==="popup_blocked") throw new Error("Le navigateur a bloqué la session invitée. Autorise les pop-ups pour Sahbi AI puis réessaie.");
+    if(code==="auth_window_closed") throw new Error("Session invitée annulée.");
+    throw new Error(e?.msg||e?.message||"Impossible de créer la session invitée.");
+  }
+}
 async function cloudChat(messages, maxTokens=900){
+  await ensureGuestSession();
   if(!window.puter?.ai?.chat) throw new Error("Cloud AI indisponible");
   const flat=messages.map(m=>{
     const role=m.role==="system"?"SYSTEM":m.role==="user"?"USER":"ASSISTANT";

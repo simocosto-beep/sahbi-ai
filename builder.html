@@ -43,7 +43,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
     <button id="improve">✨ Améliorer</button>
     <button id="fix">🧯 Corriger</button>
   </div>
-  <div class="status" id="status">Cloud Builder prêt — aucun modèle lourd à charger sur ton appareil.</div>
+  <div class="status" id="status">Cloud Builder prêt — session invitée automatique, aucun compte permanent requis.</div>
 <div class="status" id="plan" style="display:none"></div>
 <div class="status" id="testlog" style="display:none;white-space:pre-wrap"></div>
 <div class="status" id="shiplog" style="display:none;white-space:pre-wrap"></div>
@@ -62,7 +62,8 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 <script>
 const $=s=>document.querySelector(s);
 function cloudText(res){if(typeof res==="string")return res;if(typeof res?.message?.content==="string")return res.message.content;if(Array.isArray(res?.message?.content))return res.message.content.map(x=>x?.text||"").join("");if(typeof res?.text==="string")return res.text;return String(res||"")}
-async function cloudChat(messages,maxTokens=7000){if(!window.puter?.ai?.chat)throw new Error("Cloud AI indisponible");const flat=messages.map(m=>(m.role||"user").toUpperCase()+": "+String(m.content||"")).join("\n\n")+"\n\nASSISTANT:";let timer;try{const timeout=new Promise((_,rej)=>timer=setTimeout(()=>rej(new Error("Délai IA dépassé. Réessaie.")),70000));const res=await Promise.race([puter.ai.chat(flat,{model:"openai/gpt-5.4-nano"}),timeout]);const text=cloudText(res).trim();if(!text)throw new Error("Réponse IA vide");return text}finally{clearTimeout(timer)}}
+async function ensureGuestSession(){if(!window.puter?.auth||!window.puter?.ai?.chat)throw new Error("Cloud Puter indisponible");if(typeof puter.auth.isSignedIn==="function"&&puter.auth.isSignedIn())return true;$("#status").textContent="Première utilisation — création d’une session invitée temporaire…";try{await puter.auth.signIn({attempt_temp_user_creation:true});$("#status").textContent="Session invitée active ✅ — aucun compte permanent requis.";return true}catch(e){const code=e?.error||e?.code||"";if(code==="popup_blocked")throw new Error("Pop-up invitée bloquée. Autorise les pop-ups puis réessaie.");if(code==="auth_window_closed")throw new Error("Session invitée annulée.");throw new Error(e?.msg||e?.message||"Impossible de créer la session invitée.")}}
+async function cloudChat(messages,maxTokens=7000){await ensureGuestSession();if(!window.puter?.ai?.chat)throw new Error("Cloud AI indisponible");const flat=messages.map(m=>(m.role||"user").toUpperCase()+": "+String(m.content||"")).join("\n\n")+"\n\nASSISTANT:";let timer;try{const timeout=new Promise((_,rej)=>timer=setTimeout(()=>rej(new Error("Délai IA dépassé. Réessaie.")),70000));const res=await Promise.race([puter.ai.chat(flat,{model:"openai/gpt-5.4-nano"}),timeout]);const text=cloudText(res).trim();if(!text)throw new Error("Réponse IA vide");return text}finally{clearTimeout(timer)}}
 const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||7000);return {choices:[{message:{content:text}}]}}}}};
 let engine=cloudEngine,current="html",projectFiles=[],activeProject=localStorage.getItem("sahbi_active_project")||"";
 let files={html:`<main style="font-family:system-ui;padding:40px"><h1>Sahbi AI Builder</h1><p>Décris ton application puis clique Construire.</p></main>`,css:"",js:""};
