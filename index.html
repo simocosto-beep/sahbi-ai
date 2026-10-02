@@ -376,6 +376,13 @@ async function runToolChain(userText){
  return out.join("\n\n");
 }
 
+function localQuickReply(t){
+ const s=String(t||"").trim().toLowerCase();
+ if(["yo","yoo","salut","hello","hi","hey","alo","allo","salam","bonjour","bonsoir","coucou"].includes(s)) return "Yo sahbi 😁 Je suis là. Dis-moi ce que tu veux faire.";
+ if(["merci","thanks","thx","choukran"].includes(s)) return "Avec plaisir 😁";
+ if(["ok","okay","cool","top","parfait"].includes(s)) return "Parfait 😁";
+ return "";
+}
 function looksLikeSecurityAudit(t){
  const s=String(t||"").toLowerCase().trim();
  if(/\b(scan|scanner|scanne|audite|audit|sécurité|security|vuln|vulnerability|failles?)\b/i.test(s)) return true;
@@ -584,6 +591,7 @@ ${JSON.stringify(d).slice(0,30000)}`;
 }
 
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
+const quick=localQuickReply(text);if(quick){prompt.value="";resizePrompt();history.push({role:"user",content:text},{role:"assistant",content:quick});save();bubble("user",text);bubble("assistant",quick);return;}
 if(looksLikeSecurityAudit(text)){prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
 if(looksLikeSecurityRemediation(text)){prompt.value="";resizePrompt();busy=true;try{await securityRemediationFromChat()}finally{busy=false;send.disabled=false}return;}
 if(looksLikeCodeTest(text)&&attachedText){prompt.value="";resizePrompt();busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
