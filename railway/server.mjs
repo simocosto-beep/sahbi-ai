@@ -105,20 +105,25 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const payload = {
+      model,
+      messages: normalized,
+      temperature: owner ? 0.45 : 0.5,
+      max_tokens: maxTokens,
+      stream: false,
+    };
+    if (model === "stealth/space-bunny-alpha") {
+      payload.reasoning = { enabled: true, exclude: true };
+    } else {
+      payload.reasoning = { enabled: false, exclude: true };
+    }
     const upstream = await fetch(AI_BASE_URL + "/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "authorization": "Bearer " + AI_API_KEY,
       },
-      body: JSON.stringify({
-        model,
-        messages: normalized,
-        temperature: owner ? 0.45 : 0.5,
-        max_tokens: maxTokens,
-        reasoning: { enabled: false, exclude: true },
-        stream: false,
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -145,7 +150,7 @@ async function callWithFallback(normalized, owner, maxTokens) {
   const darija = looksLikeDarija(normalized);
   const candidates = darija
     ? [
-        { model: "google/gemma-4-31b-it:free", timeout: 12000 },
+        { model: "qwen/qwen3.8-27b:free", timeout: 9000 },
         { model: AI_MODEL, timeout: 8000 },
         { model: "stealth/space-bunny-alpha", timeout: 10000 },
       ]
