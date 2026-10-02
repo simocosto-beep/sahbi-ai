@@ -61,6 +61,7 @@ main{padding:18px 14px 160px}
     <div class="actions">
       <select id="model" title="Modèle">
         <option value="auto">Genius Auto</option>
+        <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">Ultra Lite 360M</option>
         <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Rapide 1B</option>
         <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC">Smart 3B</option>
         <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">Raisonnement 7B</option>
@@ -142,7 +143,7 @@ $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 function render(){
- history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable/i.test(m.content||"")));
+ history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché/i.test(m.content||"")));
  save();
  chat.innerHTML="";
  if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
@@ -163,7 +164,7 @@ async function ensureEngine(){
     load.textContent="IA prête";send.textContent="Envoyer";return true;
   }catch(e){
     console.error(e);await resetEngine();send.textContent="Envoyer";
-    status.innerHTML=isGpuCrash(e)?"<b>GPU instable sur ce navigateur.</b> J’ai arrêté le modèle proprement. Ouvre Sahbi AI directement dans Chrome récent puis réessaie avec Rapide 1B.":"<b>Échec du chargement.</b> Essaie Rapide 1B dans Chrome récent.";
+    status.innerHTML=isGpuCrash(e)?"<b>GPU instable.</b> Le modèle a été arrêté proprement. Choisis Ultra Lite 360M, puis réessaie.":"<b>Échec du chargement.</b> Essaie Ultra Lite 360M.";
     return false;
   }
 }
@@ -277,8 +278,8 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
  if(isGpuCrash(e)){
    (out._body||out).textContent="⚠️ Le GPU du navigateur a décroché. Je redémarre le moteur automatiquement…";
    await resetEngine();
-   status.innerHTML="<b>Récupération GPU…</b> rechargement de Rapide 1B.";
-   $("#model").value="Llama-3.2-1B-Instruct-q4f16_1-MLC";
+   status.innerHTML="<b>Récupération GPU…</b> je passe automatiquement en Ultra Lite 360M.";
+   $("#model").value="SmolLM2-360M-Instruct-q4f32_1-MLC";
    const ok=await ensureEngine();
    if(ok){
      try{
@@ -288,8 +289,8 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
        history.push({role:"assistant",content:acc2});save();
      }catch(e2){
        await resetEngine();
-       (out._body||out).textContent="❌ Le WebGPU de ce navigateur reste instable. Ouvre Sahbi AI directement dans Chrome (pas dans le navigateur intégré de l’app), puis réessaie.";
-       status.innerHTML="<b>WebGPU instable.</b> Chrome direct recommandé.";
+       (out._body||out).textContent="❌ Même le mode Ultra Lite n’arrive pas à stabiliser WebGPU dans ce navigateur. Essaie Google Chrome directement. Si tu es déjà dans Chrome, ferme complètement le navigateur puis rouvre Sahbi AI.";
+       status.innerHTML="<b>WebGPU instable.</b> Le mode Ultra Lite a aussi échoué.";
      }
    }
  } else {(out._body||out).textContent="Erreur : "+(e?.message||e)}
