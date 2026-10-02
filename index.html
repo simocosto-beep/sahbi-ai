@@ -651,20 +651,22 @@ async function sahbiSelfTest(){
   if(params.get("selftest")!=="1")return;
   const original=prompt.value;
   try{
+    status.textContent="SELFTEST_BOOT_OK";
     history=[];
     save();
     render();
     prompt.value="Yo";
     resizePrompt();
-    await run();
+    send.click();
     const localOk=history.some(m=>m.role==="assistant" && /Yo sahbi/i.test(String(m.content||"")));
-    let cloudOk=false,cloudDetail="";
+    status.textContent="SELFTEST_CLICK_"+(localOk?"OK":"FAIL");
     try{
       const text=await cloudChat([{role:"user",content:"Réponds seulement SELFTEST_OK"}],80);
-      cloudOk=/SELFTEST_OK/i.test(text);
-      cloudDetail=text.slice(0,80);
-    }catch(e){cloudDetail=String(e?.message||e)}
-    status.textContent="SELFTEST_LOCAL_"+(localOk?"OK":"FAIL")+" | SELFTEST_CLOUD_"+(cloudOk?"OK":"FAIL")+" | "+cloudDetail;
+      const cloudOk=/SELFTEST_OK/i.test(text);
+      status.textContent="SELFTEST_CLICK_"+(localOk?"OK":"FAIL")+" | SELFTEST_CLOUD_"+(cloudOk?"OK":"FAIL")+" | "+text.slice(0,80);
+    }catch(e){
+      status.textContent="SELFTEST_CLICK_"+(localOk?"OK":"FAIL")+" | SELFTEST_CLOUD_FAIL | "+String(e?.message||e);
+    }
   }catch(e){
     status.textContent="SELFTEST_FATAL_FAIL | "+String(e?.message||e);
   }finally{
@@ -672,7 +674,7 @@ async function sahbiSelfTest(){
     resizePrompt();
   }
 }
-setTimeout(()=>sahbiSelfTest(),700);
+sahbiSelfTest();
 $("#clear").onclick=()=>{history=[];save();render()};$("#memoryBtn").onclick=()=>$("#drawer").classList.add("show");$("#skillsBtn").onclick=()=>{$("#drawer").classList.add("show");renderSkills()};renderSkills();$("#closeDrawer").onclick=()=>$("#drawer").classList.remove("show");$("#saveMemory").onclick=()=>{memory=$("#memory").value.trim();localStorage.setItem("sahbi_memory",memory);$("#drawer").classList.remove("show")};
 $("#exportBtn").onclick=()=>{const b=new Blob([JSON.stringify({memory,history,skills:getSkills(),notes:JSON.parse(localStorage.getItem("sahbi_notes")||"[]"),tasks:JSON.parse(localStorage.getItem("sahbi_tasks")||"[]")},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="sahbi-ai-backup.json";a.click()};$("#importTrigger").onclick=()=>$("#importFile").click();$("#importFile").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const d=JSON.parse(await f.text());memory=d.memory||"";history=Array.isArray(d.history)?d.history:[];localStorage.setItem("sahbi_memory",memory);if(Array.isArray(d.skills))saveSkills(d.skills);if(Array.isArray(d.notes))localStorage.setItem("sahbi_notes",JSON.stringify(d.notes));if(Array.isArray(d.tasks))localStorage.setItem("sahbi_tasks",JSON.stringify(d.tasks));save();$("#memory").value=memory;render();renderSkills()};
 
