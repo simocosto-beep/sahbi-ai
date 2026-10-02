@@ -114,7 +114,7 @@ async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
     };
     if (model === "stealth/space-bunny-alpha") {
       payload.reasoning = { enabled: true, exclude: true };
-    } else {
+    } else if (/nemotron|qwen3\.8|gemma-4/i.test(model)) {
       payload.reasoning = { enabled: false, exclude: true };
     }
     const upstream = await fetch(AI_BASE_URL + "/chat/completions", {
@@ -150,7 +150,7 @@ async function callWithFallback(normalized, owner, maxTokens) {
   const darija = looksLikeDarija(normalized);
   const candidates = darija
     ? [
-        { model: "qwen/qwen3.8-27b:free", timeout: 9000 },
+        { model: "mistralai/mistral-small-3.1-24b-instruct:free", timeout: 9000 },
         { model: AI_MODEL, timeout: 8000 },
         { model: "stealth/space-bunny-alpha", timeout: 10000 },
       ]
