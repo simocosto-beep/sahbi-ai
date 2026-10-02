@@ -61,7 +61,7 @@ main{padding:18px 14px 160px}
     <div class="actions">
       <select id="model" title="Modèle">
         <option value="auto">Genius Auto</option>
-        <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">Ultra Lite 360M</option>
+        <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">Ultra Lite 360M · GPU</option>
         <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Rapide 1B</option>
         <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC">Smart 3B</option>
         <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">Raisonnement 7B</option>
@@ -115,7 +115,7 @@ main{padding:18px 14px 160px}
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
-let engine=null,busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
+let engine=null,cpuPipe=null,backendMode="gpu",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
 function chooseAutoModel(){
  const dm=Number(navigator.deviceMemory||4);
  if(dm>=12) return "Hermes-3-Llama-3.1-8B-q4f16_1-MLC";
@@ -126,6 +126,35 @@ function chooseAutoModel(){
 function isGpuCrash(e){
  const m=String(e?.message||e||"");
  return /GPUBuffer|mapAsync|device lost|WebGPU|unmapped before mapping/i.test(m);
+}
+async function ensureCpuFallback(){
+  if(cpuPipe)return true;
+  try{
+    status.innerHTML="<b>Mode secours CPU…</b> téléchargement du petit modèle quantifié. Le premier chargement peut prendre un moment.";
+    const T=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
+    cpuPipe=await T.pipeline("text-generation","onnx-community/SmolLM2-360M-ONNX",{device:"wasm",dtype:"q4"});
+    backendMode="cpu";
+    status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM actif — aucun WebGPU nécessaire.";
+    return true;
+  }catch(e){
+    console.error(e);cpuPipe=null;backendMode="gpu";
+    status.innerHTML="<b>Échec du mode CPU.</b> Recharge la page puis réessaie.";
+    return false;
+  }
+}
+async function cpuChat(messages,maxNew=384){
+  if(!cpuPipe){const ok=await ensureCpuFallback();if(!ok)throw new Error("Mode CPU indisponible")}
+  const out=await cpuPipe(messages,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
+  const gt=out?.[0]?.generated_text;
+  if(Array.isArray(gt)){
+    const last=gt[gt.length-1];
+    return typeof last==="string"?last:(last?.content||"");
+  }
+  if(typeof gt==="string"){
+    const promptText=messages.map(m=>m.content).join("\n");
+    return gt.startsWith(promptText)?gt.slice(promptText.length).trim():gt;
+  }
+  return "";
 }
 async function resetEngine(){
  try{if(engine?.unload)await engine.unload()}catch{}
@@ -150,6 +179,7 @@ function render(){
  for(const m of history)bubble(m.role,m.content)
 }render();
 async function ensureEngine(){
+  if(backendMode==="cpu")return await ensureCpuFallback();
   if(engine)return true;
   if(load.disabled)return false;
   if(!("gpu" in navigator)){status.innerHTML="<b>WebGPU indisponible.</b> Ouvre Sahbi AI dans Chrome récent, puis réessaie avec Rapide 1B.";return false}
@@ -164,8 +194,12 @@ async function ensureEngine(){
     load.textContent="IA prête";send.textContent="Envoyer";return true;
   }catch(e){
     console.error(e);await resetEngine();send.textContent="Envoyer";
-    status.innerHTML=isGpuCrash(e)?"<b>GPU instable.</b> Le modèle a été arrêté proprement. Choisis Ultra Lite 360M, puis réessaie.":"<b>Échec du chargement.</b> Essaie Ultra Lite 360M.";
-    return false;
+    if(isGpuCrash(e)){
+      status.innerHTML="<b>GPU instable.</b> Je bascule automatiquement sur le mode CPU/WASM.";
+      return await ensureCpuFallback();
+    }
+    status.innerHTML="<b>Échec du chargement GPU.</b> Je tente le mode CPU/WASM.";
+    return await ensureCpuFallback();
   }
 }
 load.onclick=ensureEngine;
@@ -216,8 +250,9 @@ async function generateFinalProduct(userText){
      const spec=`Tu es Sahbi AI Product Builder. Retourne UNIQUEMENT JSON {"html":"...","css":"...","js":"..."}.
 Construis un produit web complet, responsive, propre et fonctionnel selon la demande. Les boutons doivent fonctionner. Utilise localStorage si une persistance locale suffit. Pas d'explication hors JSON.
 DEMANDE: ${userText}`;
-     const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.35,max_tokens:7000});
-     const raw=r.choices?.[0]?.message?.content||"";const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
+     let raw="";
+     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec}],900);
+     else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.35,max_tokens:7000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
      let d=JSON.parse(m[0]);
      // basic self-check + one repair pass
      let issues=[];try{new Function(d.js||"")}catch(e){issues.push("Erreur JS: "+e.message)}
@@ -243,8 +278,9 @@ JS:${(d.js||"").slice(0,12000)}`;
 Crée un vrai projet multi-fichiers cohérent et progressif. Inclure README, architecture, commandes build/run et code initial utile.
 Pour un OS: produire un OS éducatif minimal réaliste, pas prétendre livrer un OS de production complet.
 DEMANDE: ${userText}`;
-     const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.3,max_tokens:8000});
-     const raw=r.choices?.[0]?.message?.content||"";const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
+     let raw="";
+     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec}],1100);
+     else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.3,max_tokens:8000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
      const d=JSON.parse(m[0]);const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();
      for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
      if(!(d.files||[]).some(x=>/README\.md$/i.test(x.path||"")))zip.file("README.md","# Produit Sahbi AI\n\n"+(d.summary||"Projet généré"));
@@ -253,7 +289,7 @@ DEMANDE: ${userText}`;
      (progress._body||progress).textContent="🏁 Projet final prêt ✅\nJe viens de télécharger le ZIP multi-fichiers.";
      history.push({role:"assistant",content:"🏁 Projet final prêt ✅ — ZIP multi-fichiers téléchargé."});save();return true;
    }
- }catch(e){if(isGpuCrash(e)){await resetEngine();status.innerHTML="<b>WebGPU instable.</b> Ouvre Sahbi AI dans Chrome direct pour construire un produit.";}(progress._body||progress).textContent="❌ Je n’ai pas pu finaliser le produit: "+(isGpuCrash(e)?"le GPU du navigateur a décroché. Essaie Chrome direct.":(e.message||e));return false}
+ }catch(e){if(isGpuCrash(e)){await resetEngine();backendMode="cpu";await ensureCpuFallback();status.innerHTML="<b>Mode CPU actif.</b> Relance ta demande de construction.";}(progress._body||progress).textContent="❌ Je n’ai pas pu finaliser ce produit pendant le basculement. Relance ta demande: Sahbi AI est maintenant en mode CPU.";return false}
 }
 async function run(){if(busy)return;let text=prompt.value.trim();if(!text&& !attachedText)return;if(!engine){status.innerHTML="<b>Préparation…</b> Je charge l’IA automatiquement avant d’envoyer ton message.";const ok=await ensureEngine();if(!ok)return;}if(busy)return;
 if(looksLikeBuildRequest(text)){prompt.value="";busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
@@ -274,23 +310,30 @@ if(!toolContext && !text.startsWith("/")){const sk=findSkill(text);if(sk){sk.use
 if(agentMode && !toolContext && !text.startsWith("/")){try{const p=await planTools(text);if(p.tool&&p.tool!=="none"){$("#fileChip").textContent="⚡ Agent utilise "+p.tool+"…";toolContext=await execTool(p.tool,p.arg||text)}}catch{}}
 if(toolContext)text+="\n\n[Résultat d'outil vérifié]\n"+toolContext.slice(0,26000);
 $("#fileChip").textContent="";
-if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue de l'utilisateur (français, darija, arabe, anglais). Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}`;try{const stream=await engine.chat.completions.create({messages:[{role:"system",content:sys},...history.slice(-20)],temperature:.55,max_tokens:1800,stream:true});let acc="";for await(const ch of stream){acc+=ch.choices?.[0]?.delta?.content||"";(out._body||out).textContent=acc||"…";scrollTo(0,document.body.scrollHeight)}history.push({role:"assistant",content:acc});save();try{const recent=history.filter(x=>x.role==="user").slice(-6).map(x=>x.content.toLowerCase());if(recent.length>=4){const common=recent.filter((x,i)=>recent.findIndex(y=>y.slice(0,28)===x.slice(0,28))!==i);if(common.length>=2 && !getSkills().some(s=>common.some(t=>t.includes((s.trigger||"").toLowerCase())))){setTimeout(()=>{bubble("assistant","💡 Tu répètes une demande similaire. Tu peux me l’apprendre avec /teach pour que je la transforme en skill permanent.")},150)}}}catch{}}catch(e){
+if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue de l'utilisateur (français, darija, arabe, anglais). Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}`;try{
+ let acc="";
+ if(backendMode==="cpu"){
+   (out._body||out).textContent="🧠 Mode CPU…";
+   acc=await cpuChat([{role:"system",content:sys},...history.slice(-12)],384);
+   (out._body||out).textContent=acc||"Réponse vide.";
+ }else{
+   const stream=await engine.chat.completions.create({messages:[{role:"system",content:sys},...history.slice(-20)],temperature:.55,max_tokens:1800,stream:true});
+   for await(const ch of stream){acc+=ch.choices?.[0]?.delta?.content||"";(out._body||out).textContent=acc||"…";scrollTo(0,document.body.scrollHeight)}
+ }
+ history.push({role:"assistant",content:acc});save();try{const recent=history.filter(x=>x.role==="user").slice(-6).map(x=>x.content.toLowerCase());if(recent.length>=4){const common=recent.filter((x,i)=>recent.findIndex(y=>y.slice(0,28)===x.slice(0,28))!==i);if(common.length>=2 && !getSkills().some(s=>common.some(t=>t.includes((s.trigger||"").toLowerCase())))){setTimeout(()=>{bubble("assistant","💡 Tu répètes une demande similaire. Tu peux me l’apprendre avec /teach pour que je la transforme en skill permanent.")},150)}}}catch{}}catch(e){
  if(isGpuCrash(e)){
-   (out._body||out).textContent="⚠️ Le GPU du navigateur a décroché. Je redémarre le moteur automatiquement…";
+   (out._body||out).textContent="⚠️ Le GPU a décroché. Je bascule sur le mode CPU, sans WebGPU…";
    await resetEngine();
-   status.innerHTML="<b>Récupération GPU…</b> je passe automatiquement en Ultra Lite 360M.";
-   $("#model").value="SmolLM2-360M-Instruct-q4f32_1-MLC";
-   const ok=await ensureEngine();
+   backendMode="cpu";
+   const ok=await ensureCpuFallback();
    if(ok){
      try{
-       const retry=await engine.chat.completions.create({messages:[{role:"system",content:sys},...history.slice(-20)],temperature:.45,max_tokens:1200});
-       const acc2=retry.choices?.[0]?.message?.content||"";
+       const acc2=await cpuChat([{role:"system",content:sys},...history.slice(-12)],384);
        (out._body||out).textContent=acc2||"Réponse vide.";
        history.push({role:"assistant",content:acc2});save();
      }catch(e2){
-       await resetEngine();
-       (out._body||out).textContent="❌ Même le mode Ultra Lite n’arrive pas à stabiliser WebGPU dans ce navigateur. Essaie Google Chrome directement. Si tu es déjà dans Chrome, ferme complètement le navigateur puis rouvre Sahbi AI.";
-       status.innerHTML="<b>WebGPU instable.</b> Le mode Ultra Lite a aussi échoué.";
+       (out._body||out).textContent="❌ Le mode CPU a aussi échoué. Recharge Sahbi AI puis réessaie.";
+       status.innerHTML="<b>Mode CPU indisponible.</b>";
      }
    }
  } else {(out._body||out).textContent="Erreur : "+(e?.message||e)}
