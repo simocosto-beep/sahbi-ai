@@ -219,7 +219,7 @@ $("#ownerBtn").onclick=async()=>{
     }
     return;
   }
-  const pin=prompt("PIN Owner Sahbi :");
+  const pin=window.prompt("PIN Owner Sahbi :");
   if(!pin)return;
   try{
     const r=await fetch(SAHBI_API+"/api/owner/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
