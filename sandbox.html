@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1020"><title>Sahbi AI Sandbox</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--panel:#101827;--line:#26324d;--text:#f8fafc;--muted:#94a3b8;--accent:#7c3aed}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+header{height:62px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0b1020}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,select{font:inherit;border:1px solid var(--line);background:#172036;color:#fff;border-radius:10px;padding:8px 11px}button{cursor:pointer}.primary{background:var(--accent);border-color:transparent}
+.grid{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 62px)}.pane{display:grid;grid-template-rows:46px 1fr}.pane:first-child{border-right:1px solid var(--line)}.bar{border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;padding:6px 10px;background:#0d1423}
+textarea,pre{margin:0;width:100%;height:100%;border:0;outline:0;background:#0b1220;color:#dbeafe;padding:14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto;white-space:pre-wrap}
+.hint{font-size:12px;color:var(--muted)}@media(max-width:850px){.grid{grid-template-columns:1fr;height:auto}.pane{min-height:50vh}.pane:first-child{border-right:0;border-bottom:1px solid var(--line)}}
+</style></head><body>
+<header><div><b>Sahbi AI Sandbox</b><div class="hint">Exécution locale isolée dans ton navigateur</div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button onclick="location.href='./builder.html'">🛠️ Builder</button></div></header>
+<div class="grid">
+<section class="pane"><div class="bar"><select id="lang"><option value="js">JavaScript</option><option value="py">Python (Pyodide)</option></select><button id="run" class="primary">▶ Exécuter</button><button id="stop">■ Stop</button><span class="hint">Timeout 8 s</span></div><textarea id="code">console.log("Salam depuis Sahbi AI Sandbox 👋");</textarea></section>
+<section class="pane"><div class="bar"><b>Sortie</b><button id="clear">Effacer</button></div><pre id="out">Prêt.</pre></section>
+</div>
+<script>
+const $=s=>document.querySelector(s);let worker=null,timer=null;
+function log(t){$("#out").textContent+=($("#out").textContent?"\n":"")+t}
+function stop(){if(worker){worker.terminate();worker=null}clearTimeout(timer);timer=null}
+$("#stop").onclick=()=>{stop();log("⛔ Exécution arrêtée.")};$("#clear").onclick=()=>$("#out").textContent="";
+function runJS(src){
+ const blob=new Blob([`self.console={log:(...a)=>postMessage({t:"log",v:a.map(x=>typeof x==="string"?x:JSON.stringify(x)).join(" ")}),error:(...a)=>postMessage({t:"log",v:a.join(" ")})};
+ self.onmessage=async e=>{try{const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;const fn=new AsyncFunction(e.data);const r=await fn();if(r!==undefined)postMessage({t:"log",v:String(r)});postMessage({t:"done"})}catch(err){postMessage({t:"err",v:String(err?.stack||err)})}}`],{type:"text/javascript"});
+ worker=new Worker(URL.createObjectURL(blob));worker.onmessage=e=>{if(e.data.t==="log")log(e.data.v);if(e.data.t==="err"){log("❌ "+e.data.v);stop()}if(e.data.t==="done"){log("✅ Terminé.");stop()}};worker.postMessage(src);
+}
+function runPY(src){
+ const code=`importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
+ let py=null;self.onmessage=async e=>{try{if(!py)py=await loadPyodide({stdout:s=>postMessage({t:"log",v:s}),stderr:s=>postMessage({t:"log",v:s})});const r=await py.runPythonAsync(e.data);if(r!==undefined&&r!==null)postMessage({t:"log",v:String(r)});postMessage({t:"done"})}catch(err){postMessage({t:"err",v:String(err?.stack||err)})}}`;
+ const blob=new Blob([code],{type:"text/javascript"});worker=new Worker(URL.createObjectURL(blob));worker.onmessage=e=>{if(e.data.t==="log")log(e.data.v);if(e.data.t==="err"){log("❌ "+e.data.v);stop()}if(e.data.t==="done"){log("✅ Terminé.");stop()}};worker.postMessage(src);
+}
+$("#run").onclick=()=>{stop();$("#out").textContent="";const src=$("#code").value;if($("#lang").value==="js")runJS(src);else runPY(src);timer=setTimeout(()=>{if(worker){stop();log("⏱️ Timeout: exécution interrompue après 8 secondes.")}},8000)};
+$("#lang").onchange=()=>{$("#code").value=$("#lang").value==="js"?'console.log("Salam depuis Sahbi AI Sandbox 👋");':'print("Salam depuis Python 👋")'};
+</script></body></html>
