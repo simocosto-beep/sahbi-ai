@@ -134,7 +134,7 @@ async function ensureCpuFallback(){
     const T=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
     cpuPipe=await T.pipeline("text-generation","onnx-community/SmolLM2-360M-ONNX",{device:"wasm",dtype:"q4"});
     backendMode="cpu";
-    status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM actif — aucun WebGPU nécessaire.";
+    status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM actif — aucun WebGPU ni chat-template requis.";
     return true;
   }catch(e){
     console.error(e);cpuPipe=null;backendMode="gpu";
@@ -144,23 +144,23 @@ async function ensureCpuFallback(){
 }
 async function cpuChat(messages,maxNew=384){
   if(!cpuPipe){const ok=await ensureCpuFallback();if(!ok)throw new Error("Mode CPU indisponible")}
-  let out;
-  try{
-    out=await cpuPipe(messages,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
-  }catch{
-    const flat=messages.map(m=>`${m.role.toUpperCase()}: ${m.content}`).join("\n")+"\nASSISTANT:";
-    out=await cpuPipe(flat,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
-  }
+  const flat=messages.map(m=>{
+    const role=m.role==="system"?"SYSTEM":m.role==="user"?"USER":"ASSISTANT";
+    return role+": "+String(m.content||"");
+  }).join("\n\n")+"\n\nASSISTANT:";
+  const out=await cpuPipe(flat,{
+    max_new_tokens:maxNew,
+    do_sample:true,
+    temperature:0.5,
+    top_p:0.9,
+    repetition_penalty:1.08,
+    return_full_text:true
+  });
   const gt=out?.[0]?.generated_text;
-  if(Array.isArray(gt)){
-    const last=gt[gt.length-1];
-    return typeof last==="string"?last:(last?.content||"");
-  }
-  if(typeof gt==="string"){
-    const marker="ASSISTANT:";
-    return gt.includes(marker)?gt.slice(gt.lastIndexOf(marker)+marker.length).trim():gt.trim();
-  }
-  return "";
+  if(typeof gt!=="string")return "";
+  const marker="ASSISTANT:";
+  const idx=gt.lastIndexOf(marker);
+  return (idx>=0?gt.slice(idx+marker.length):gt).trim();
 }
 async function resetEngine(){
  try{if(engine?.unload)await engine.unload()}catch{}
@@ -182,7 +182,7 @@ if(backendMode==="cpu"){
   $("#model").disabled=true;
 }
 function render(){
- history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché/i.test(m.content||"")));
+ history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché|apply_chat_template|chat_template is not set/i.test(m.content||"")));
  save();
  chat.innerHTML="";
  if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
