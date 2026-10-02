@@ -101,6 +101,61 @@ function noteFailedLogin(req) {
   }
 }
 
+async function callModel(model, normalized, owner, maxTokens, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const upstream = await fetch(AI_BASE_URL + "/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "authorization": "Bearer " + AI_API_KEY,
+      },
+      body: JSON.stringify({
+        model,
+        messages: normalized,
+        temperature: owner ? 0.45 : 0.5,
+        max_tokens: maxTokens,
+        reasoning: { enabled: false, exclude: true },
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!upstream.ok) {
+      const detail = (await upstream.text()).slice(0, 500);
+      const error = new Error("upstream_" + upstream.status);
+      error.status = upstream.status;
+      error.detail = detail;
+      throw error;
+    }
+
+    return await upstream.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callWithFallback(normalized, owner, maxTokens) {
+  const candidates = [
+    { model: AI_MODEL, timeout: 8000 },
+    { model: "inclusionai/ling-3.0-flash:free", timeout: 10000 },
+  ];
+
+  let lastError;
+  for (const candidate of candidates) {
+    try {
+      const data = await callModel(candidate.model, normalized, owner, maxTokens, candidate.timeout);
+      return { data, modelUsed: candidate.model };
+    } catch (error) {
+      lastError = error;
+      const reason = error?.name === "AbortError" ? "timeout" : String(error?.message || "unknown");
+      console.warn("model_attempt_failed", candidate.model, reason);
+    }
+  }
+  throw lastError || new Error("all_models_failed");
+}
+
 const server = http.createServer(async (req, res) => {
   const origin = allowedOrigin(req);
   if (!origin) return json(res, 403, { error: "origin_not_allowed" }, "null");
@@ -185,36 +240,14 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const upstream = await fetch(AI_BASE_URL + "/chat/completions", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "authorization": "Bearer " + AI_API_KEY,
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          messages: normalized,
-          temperature: owner ? 0.45 : 0.5,
-          max_tokens: requestedMaxTokens,
-          reasoning: { enabled: false, exclude: true },
-          stream: false,
-        }),
-      });
-
-      if (!upstream.ok) {
-        const detail = (await upstream.text()).slice(0, 1000);
-        console.error("upstream_error", upstream.status, detail);
-        return json(res, 502, { error: "upstream_ai_error" }, origin);
-      }
-
-      const data = await upstream.json();
+      const { data, modelUsed } = await callWithFallback(normalized, owner, requestedMaxTokens);
       let text = String(data?.choices?.[0]?.message?.content || "").trim();
       if (/here(?:'|’)s a thinking process|here is (?:my|a) thinking process|chain[- ]of[- ]thought|^analysis\s*:/i.test(text)) {
         const lines = text.split("\n");
         const finalIndex = lines.findIndex(line => /^(final|answer|réponse finale|response)\s*[:：]/i.test(line.trim()));
         if (finalIndex >= 0) text = lines.slice(finalIndex + 1).join("\n").trim();
       }
-      return json(res, 200, { text, owner }, origin);
+      return json(res, 200, { text, owner, model: modelUsed }, origin);
     } catch (error) {
       console.error("chat_error", error);
       return json(res, 500, { error: "internal_error" }, origin);
