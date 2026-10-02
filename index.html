@@ -124,7 +124,7 @@ function isGpuCrash(e){
 const SAHBI_API="https://sahbi-api-production.up.railway.app";
 async function cloudChat(messages,maxTokens=900){
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),90000);
+  const timer=setTimeout(()=>controller.abort(),25000);
   try{
     const r=await fetch(SAHBI_API+"/api/chat",{
       method:"POST",
@@ -386,7 +386,7 @@ else if(text.startsWith("/fx ")){ $("#fileChip").textContent="💱 Taux en direc
 else if(text.startsWith("/note ")){toolContext=saveNote(text.slice(6))}
 }catch(err){toolContext="Erreur outil: "+(err?.message||err)}
 if(!toolContext && !text.startsWith("/")){const sk=findSkill(text);if(sk){sk.uses=(sk.uses||0)+1;const ss=getSkills();const i=ss.findIndex(x=>x.name===sk.name);if(i>=0){ss[i]=sk;saveSkills(ss)}let arg=text;if(sk.argTemplate)arg=sk.argTemplate.replace(/\{input\}/g,text);toolContext="[Skill appris: "+sk.name+"]\n"+sk.instruction;if(sk.tool&&sk.tool!=="none"){try{toolContext+="\n\n"+await execTool(sk.tool,arg)}catch(e){toolContext+="\nErreur outil: "+(e?.message||e)}}}}
-if(agentMode && !toolContext && !text.startsWith("/")){try{const p=await planTools(text);if(p.tool&&p.tool!=="none"){$("#fileChip").textContent="⚡ Agent utilise "+p.tool+"…";toolContext=await execTool(p.tool,p.arg||text)}}catch{}}
+if(agentMode && !toolContext && !text.startsWith("/") && /(météo|weather|température|convert|taux|euro|mad|usd|calcul|combien|recherche|cherche|web|internet|url|http|note|tâche|task)/i.test(text)){try{const p=await planTools(text);if(p.tool&&p.tool!=="none"){$("#fileChip").textContent="⚡ Agent utilise "+p.tool+"…";toolContext=await execTool(p.tool,p.arg||text)}}catch{}}
 if(toolContext)text+="\n\n[Résultat d'outil vérifié]\n"+toolContext.slice(0,26000);
 $("#fileChip").textContent="";
 if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+attachedText.slice(0,24000)}busy=true;prompt.value="";send.disabled=true;history.push({role:"user",content:text});save();bubble("user",text.length>5000?text.slice(0,5000)+"\n[…fichier tronqué à l’affichage…]":text);const out=bubble("assistant","…");const now=new Date();const sys=`Tu es Sahbi AI, un assistant personnel polyvalent et orienté action. Avant de finaliser une réponse complexe, vérifie mentalement: ai-je répondu à toute la demande, ai-je utilisé les outils pertinents, ai-je signalé les limites, et y a-t-il une erreur évidente à corriger ? Quand le mode Agent est actif, des outils peuvent avoir déjà été exécutés pour toi; utilise leurs résultats comme faits et ne prétends jamais avoir utilisé un outil absent. Tu aides à réfléchir, écrire, coder, analyser des fichiers, planifier, traduire, calculer et résoudre des problèmes. Réponds dans la langue de l'utilisateur (français, darija, arabe, anglais). Pour les calculs simples, vérifie les opérations étape par étape. Pour le code, propose des solutions exécutables et explique les risques. Pour les documents joints, base ta réponse sur leur contenu et indique clairement quand une information manque. N'invente jamais un accès au web, aux e-mails, aux comptes ou aux fichiers qui ne t'ont pas été fournis. Date locale: ${now.toLocaleString()}. Mémoire utilisateur:\n${memory||"(aucune)"}\n\nSkills appris disponibles:\n${skillSummary()}`;try{
@@ -420,7 +420,7 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
      }
    }
  } else {(out._body||out).textContent="Erreur : "+(e?.message||e)}
-}attachedText="";attachedName="";$("#fileChip").textContent="";busy=false;send.disabled=false}
+}finally{attachedText="";attachedName="";$("#fileChip").textContent="";busy=false;send.disabled=false}}
 send.onclick=run;prompt.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();run()}});
 $("#clear").onclick=()=>{history=[];save();render()};$("#memoryBtn").onclick=()=>$("#drawer").classList.add("show");$("#skillsBtn").onclick=()=>{$("#drawer").classList.add("show");renderSkills()};renderSkills();$("#closeDrawer").onclick=()=>$("#drawer").classList.remove("show");$("#saveMemory").onclick=()=>{memory=$("#memory").value.trim();localStorage.setItem("sahbi_memory",memory);$("#drawer").classList.remove("show")};
 $("#exportBtn").onclick=()=>{const b=new Blob([JSON.stringify({memory,history,skills:getSkills(),notes:JSON.parse(localStorage.getItem("sahbi_notes")||"[]"),tasks:JSON.parse(localStorage.getItem("sahbi_tasks")||"[]")},null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="sahbi-ai-backup.json";a.click()};$("#importTrigger").onclick=()=>$("#importFile").click();$("#importFile").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;const d=JSON.parse(await f.text());memory=d.memory||"";history=Array.isArray(d.history)?d.history:[];localStorage.setItem("sahbi_memory",memory);if(Array.isArray(d.skills))saveSkills(d.skills);if(Array.isArray(d.notes))localStorage.setItem("sahbi_notes",JSON.stringify(d.notes));if(Array.isArray(d.tasks))localStorage.setItem("sahbi_tasks",JSON.stringify(d.tasks));save();$("#memory").value=memory;render();renderSkills()};
