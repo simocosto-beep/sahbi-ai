@@ -130,11 +130,11 @@ function isGpuCrash(e){
 async function ensureCpuFallback(){
   if(cpuPipe)return true;
   try{
-    status.innerHTML="<b>Mode secours CPU…</b> téléchargement du petit modèle quantifié. Le premier chargement peut prendre un moment.";
+    status.innerHTML="<b>Mode secours CPU…</b> téléchargement du modèle ultra-léger 135M (~120–180 Mo selon variante). Le premier chargement peut prendre un moment.";
     const T=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
-    cpuPipe=await T.pipeline("text-generation","onnx-community/SmolLM2-360M-ONNX",{device:"wasm",dtype:"q4"});
+    cpuPipe=await T.pipeline("text-generation","onnx-community/SmolLM2-135M-Instruct-ONNX-MHA",{device:"wasm",dtype:"q4f16"});
     backendMode="cpu";
-    status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM actif — aucun WebGPU ni chat-template requis.";
+    status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM 135M actif — aucun WebGPU nécessaire.";
     return true;
   }catch(e){
     console.error(e);cpuPipe=null;backendMode="gpu";
@@ -142,7 +142,7 @@ async function ensureCpuFallback(){
     return false;
   }
 }
-async function cpuChat(messages,maxNew=384){
+async function cpuChat(messages,maxNew=160){
   if(!cpuPipe){const ok=await ensureCpuFallback();if(!ok)throw new Error("Mode CPU indisponible")}
   const flat=messages.map(m=>{
     const role=m.role==="system"?"SYSTEM":m.role==="user"?"USER":"ASSISTANT";
@@ -178,11 +178,11 @@ $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 if(backendMode==="cpu"){
-  $("#model").innerHTML='<option selected>Mobile CPU · Stable</option>';
+  $("#model").innerHTML='<option selected>Mobile CPU · 135M</option>';
   $("#model").disabled=true;
 }
 function render(){
- history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché|apply_chat_template|chat_template is not set/i.test(m.content||"")));
+ history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché|apply_chat_template|chat_template is not set|Mode CPU a aussi échoué|Mode CPU indisponible/i.test(m.content||"")));
  save();
  chat.innerHTML="";
  if(!history.length)bubble("assistant","Salam 👋 Dis-moi simplement ce que tu veux. Si tu me demandes de construire quelque chose, je le fais et je te livre directement le produit final.");
@@ -265,7 +265,7 @@ async function generateFinalProduct(userText){
 Construis un produit web complet, responsive, propre et fonctionnel selon la demande. Les boutons doivent fonctionner. Utilise localStorage si une persistance locale suffit. Pas d'explication hors JSON.
 DEMANDE: ${userText}`;
      let raw="";
-     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec}],900);
+     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,5000)}],500);
      else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.35,max_tokens:7000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Réponse produit invalide");
      let d=JSON.parse(m[0]);
      // basic self-check + one repair pass
@@ -293,7 +293,7 @@ Crée un vrai projet multi-fichiers cohérent et progressif. Inclure README, arc
 Pour un OS: produire un OS éducatif minimal réaliste, pas prétendre livrer un OS de production complet.
 DEMANDE: ${userText}`;
      let raw="";
-     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec}],1100);
+     if(backendMode==="cpu") raw=await cpuChat([{role:"system",content:spec.slice(0,6000)}],600);
      else {const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:.3,max_tokens:8000});raw=r.choices?.[0]?.message?.content||"";}const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet invalide");
      const d=JSON.parse(m[0]);const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();
      for(const file of (d.files||[])){if(file.path&&!file.path.includes("../")&&!file.path.startsWith("/"))zip.file(file.path,file.content||"")}
@@ -328,7 +328,7 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
  let acc="";
  if(backendMode==="cpu"){
    (out._body||out).textContent="🧠 Mode CPU…";
-   acc=await cpuChat([{role:"system",content:sys},...history.slice(-12)],384);
+   acc=await cpuChat([{role:"system",content:sys.slice(0,1800)},...history.slice(-4)],160);
    (out._body||out).textContent=acc||"Réponse vide.";
  }else{
    const stream=await engine.chat.completions.create({messages:[{role:"system",content:sys},...history.slice(-20)],temperature:.55,max_tokens:1800,stream:true});
@@ -342,7 +342,7 @@ if(attachedText){text+=(text?"\n\n":"")+"[Fichier joint: "+attachedName+"]\n"+at
    const ok=await ensureCpuFallback();
    if(ok){
      try{
-       const acc2=await cpuChat([{role:"system",content:sys},...history.slice(-12)],384);
+       const acc2=await cpuChat([{role:"system",content:sys.slice(0,1800)},...history.slice(-4)],160);
        (out._body||out).textContent=acc2||"Réponse vide.";
        history.push({role:"assistant",content:acc2});save();
      }catch(e2){
