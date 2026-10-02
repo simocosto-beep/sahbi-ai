@@ -20,11 +20,11 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
 </style>
 </head><body>
-<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · Cloud Builder stable</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 ZIP courant</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · Core v2 Builder</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 ZIP courant</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
 <div class="grid">
 <section class="side">
   <div class="label">Modèle</div>
-  <select id="model" disabled><option selected>Sahbi Cloud · Railway</option></select>
+  <select id="model" disabled><option selected>Sahbi Cloud · Core v2</option></select>
   <button id="load" class="primary" disabled>Cloud prêt</button>
   <div class="label">Type de projet</div>
 <select id="projectType">
@@ -62,18 +62,19 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 <script>
 const $=s=>document.querySelector(s);
 const SAHBI_API="https://sahbi-api-production.up.railway.app";
+const ownerToken=localStorage.getItem("sahbi_owner_token")||"";
 async function cloudChat(messages,maxTokens=7000){
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),120000);
+  const timer=setTimeout(()=>controller.abort(),30000);
   try{
     const r=await fetch(SAHBI_API+"/api/chat",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json",...(ownerToken?{"X-Sahbi-Owner-Token":ownerToken}:{})},
       body:JSON.stringify({messages,max_tokens:maxTokens}),
       signal:controller.signal
     });
     const data=await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(data?.message||data?.error||("Erreur cloud HTTP "+r.status));
+    if(!r.ok){if(r.status===429)throw new Error("Limite cloud temporaire. Réessaie dans quelques secondes.");throw new Error(data?.message||data?.error||("Erreur cloud HTTP "+r.status));}
     const text=String(data?.text||"").trim();
     if(!text) throw new Error("Réponse IA vide");
     return text;
