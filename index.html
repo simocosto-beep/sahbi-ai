@@ -506,8 +506,10 @@ async function securityRemediationFromChat(){
 }
 
 function looksLikeBuildRequest(t){
- const s=t.toLowerCase();
- return /(cr[eé]e|construis|fabrique|d[eé]veloppe|build|make).{0,40}(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme)/i.test(s);
+ const s=String(t||"").toLowerCase().trim();
+ const creation=/(cr[eé]e|cr[eé]er|cr[eé]ez|construis|construire|fabrique|fabriquer|d[eé]veloppe|d[eé]velopper|build|make|fais[- ]?moi|je veux|je voudrais|j'aimerais|je peux|peux[- ]?tu)/i;
+ const product=/(site|app|application|logiciel|software|api|backend|syst[eè]me d'exploitation|operating system|\bos\b|outil|programme|scanner|script|bot|dashboard)/i;
+ return creation.test(s) && product.test(s);
 }
 async function generateFinalProduct(userText){
  const progress=bubble("assistant","🏗️ Je construis, teste et prépare le produit…");
@@ -601,7 +603,7 @@ const quick=localQuickReply(text);if(quick){prompt.value="";resizePrompt();histo
 if(localStorage.getItem("sahbi_pending_security_audit")==="1" && extractFirstUrl(text)){
   prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;
 }
-if(looksLikeBuildRequest(text)){prompt.value="";resizePrompt();busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
+if(looksLikeBuildRequest(text)){localStorage.removeItem("sahbi_pending_security_audit");prompt.value="";resizePrompt();busy=true;try{await generateFinalProduct(text)}finally{busy=false;send.disabled=false}return;}
 if(looksLikeSecurityAudit(text)){prompt.value="";resizePrompt();busy=true;try{await runSecurityFromChat(text)}finally{busy=false;send.disabled=false}return;}
 if(looksLikeSecurityRemediation(text)){prompt.value="";resizePrompt();busy=true;try{await securityRemediationFromChat()}finally{busy=false;send.disabled=false}return;}
 if(looksLikeCodeTest(text)&&attachedText){prompt.value="";resizePrompt();busy=true;try{await runAttachedCodeFromChat()}finally{busy=false;send.disabled=false}return;}
