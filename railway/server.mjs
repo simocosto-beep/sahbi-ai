@@ -1,5 +1,7 @@
 import http from "node:http";
 import https from "node:https";
+import fs from "node:fs/promises";
+import path from "node:path";
 import crypto from "node:crypto";
 import dns from "node:dns/promises";
 import net from "node:net";
@@ -374,8 +376,50 @@ function securityFindings(url, result) {
   return findings;
 }
 
+const STATIC_FILES = new Map([
+  ["/", "index.html"],
+  ["/index.html", "index.html"],
+  ["/manifest.json", "manifest.json"],
+  ["/builder.html", "builder.html"],
+  ["/projects.html", "projects.html"],
+  ["/sandbox.html", "sandbox.html"],
+  ["/studio.html", "studio.html"],
+  ["/plugins.html", "plugins.html"],
+  ["/deploy.html", "deploy.html"],
+  ["/security.html", "security.html"],
+]);
+
+function contentTypeFor(file) {
+  if (file.endsWith(".html")) return "text/html; charset=utf-8";
+  if (file.endsWith(".json")) return "application/json; charset=utf-8";
+  return "text/plain; charset=utf-8";
+}
+
+async function serveStatic(req, res, pathname) {
+  const file = STATIC_FILES.get(pathname);
+  if (!file) return false;
+  try {
+    const full = path.join(process.cwd(), file);
+    const body = await fs.readFile(full);
+    res.writeHead(200, {
+      "content-type": contentTypeFor(file),
+      "cache-control": "no-store, max-age=0",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+    });
+    res.end(body);
+  } catch {
+    res.writeHead(404, {"content-type":"text/plain; charset=utf-8","cache-control":"no-store"});
+    res.end("Not found");
+  }
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
+
+  if (req.method === "GET" && await serveStatic(req, res, url.pathname)) return;
+
   const origin = allowedOrigin(req);
 
   if (req.method === "GET" && url.pathname === "/health") {
