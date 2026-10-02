@@ -115,7 +115,7 @@ main{padding:18px 14px 160px}
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
-let engine=null,cpuPipe=null,backendMode="gpu",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
+let engine=null,cpuPipe=null,backendMode=(/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)?"cpu":"gpu"),busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
 function chooseAutoModel(){
  const dm=Number(navigator.deviceMemory||4);
  if(dm>=12) return "Hermes-3-Llama-3.1-8B-q4f16_1-MLC";
@@ -131,7 +131,7 @@ async function ensureCpuFallback(){
   if(cpuPipe)return true;
   try{
     status.innerHTML="<b>Mode secours CPU…</b> téléchargement du petit modèle quantifié. Le premier chargement peut prendre un moment.";
-    const T=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1");
+    const T=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
     cpuPipe=await T.pipeline("text-generation","onnx-community/SmolLM2-360M-ONNX",{device:"wasm",dtype:"q4"});
     backendMode="cpu";
     status.innerHTML="<b>Prêt ✅</b> Mode CPU/WASM actif — aucun WebGPU nécessaire.";
@@ -144,15 +144,21 @@ async function ensureCpuFallback(){
 }
 async function cpuChat(messages,maxNew=384){
   if(!cpuPipe){const ok=await ensureCpuFallback();if(!ok)throw new Error("Mode CPU indisponible")}
-  const out=await cpuPipe(messages,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
+  let out;
+  try{
+    out=await cpuPipe(messages,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
+  }catch{
+    const flat=messages.map(m=>`${m.role.toUpperCase()}: ${m.content}`).join("\n")+"\nASSISTANT:";
+    out=await cpuPipe(flat,{max_new_tokens:maxNew,do_sample:true,temperature:0.5,top_p:0.9,repetition_penalty:1.08});
+  }
   const gt=out?.[0]?.generated_text;
   if(Array.isArray(gt)){
     const last=gt[gt.length-1];
     return typeof last==="string"?last:(last?.content||"");
   }
   if(typeof gt==="string"){
-    const promptText=messages.map(m=>m.content).join("\n");
-    return gt.startsWith(promptText)?gt.slice(promptText.length).trim():gt;
+    const marker="ASSISTANT:";
+    return gt.includes(marker)?gt.slice(gt.lastIndexOf(marker)+marker.length).trim():gt.trim();
   }
   return "";
 }
@@ -171,6 +177,10 @@ const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
+if(backendMode==="cpu"){
+  $("#model").innerHTML='<option selected>Mobile CPU · Stable</option>';
+  $("#model").disabled=true;
+}
 function render(){
  history=history.filter(m=>!(m.role==="assistant" && /GPUBuffer|mapAsync|unmapped before mapping|WebGPU instable|GPU du navigateur a décroché/i.test(m.content||"")));
  save();
@@ -179,7 +189,11 @@ function render(){
  for(const m of history)bubble(m.role,m.content)
 }render();
 async function ensureEngine(){
-  if(backendMode==="cpu")return await ensureCpuFallback();
+  if(backendMode==="cpu"){
+    $("#model").disabled=true;
+    status.innerHTML="<b>Mode mobile :</b> je démarre directement en CPU/WASM pour éviter les crashs WebGPU.";
+    return await ensureCpuFallback();
+  }
   if(engine)return true;
   if(load.disabled)return false;
   if(!("gpu" in navigator)){status.innerHTML="<b>WebGPU indisponible.</b> Ouvre Sahbi AI dans Chrome récent, puis réessaie avec Rapide 1B.";return false}
