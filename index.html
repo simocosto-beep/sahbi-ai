@@ -248,7 +248,7 @@ async function refreshOwnerStatus(){
   try{
     const r=await fetch(SAHBI_API+"/api/owner/status",{headers:{"X-Sahbi-Owner-Token":ownerToken}});
     const d=await r.json();
-    if(d.owner){$("#ownerBtn").textContent="👑 Owner actif";return true}
+    if(d.owner){$("#ownerBtn").textContent="👑 Owner actif ✅";status.innerHTML="<b>👑 Owner actif ✅</b> Session validée par Railway.";return true}
   }catch{}
   ownerToken="";
   localStorage.removeItem("sahbi_owner_token");
@@ -273,11 +273,11 @@ $("#ownerBtn").onclick=async()=>{
     if(!r.ok)throw new Error(d.message||d.error||"PIN refusé");
     ownerToken=d.token;
     localStorage.setItem("sahbi_owner_token",ownerToken);
-    $("#ownerBtn").textContent="👑 Owner actif";
-    status.innerHTML="<b>👑 Owner mode actif.</b> Sahbi te reconnaît comme propriétaire pour 24 h.";
+    $("#ownerBtn").textContent="👑 Owner actif ✅";
+    status.innerHTML="<b>👑 Owner actif ✅</b> Session validée par Railway pour 24 h.";
     $("#drawer").classList.remove("show");
   }catch(e){
-    status.innerHTML="<b>Owner :</b> "+(e.message||e);
+    status.innerHTML="<b>❌ Owner refusé :</b> "+(e.message||e);
   }
 };
 refreshOwnerStatus();
@@ -389,8 +389,9 @@ async function runToolChain(userText){
 }
 
 function looksLikeSecurityAudit(t){
- const s=String(t||"").toLowerCase();
- return /(audit|audite|scan|scanne|scanner|sécurité|security|vuln|failles?).{0,60}(site|url|domaine|domain|https?:\/\/)/i.test(s) || /(mon site|my site).{0,40}(audit|scan|sécurité|security)/i.test(s);
+ const s=String(t||"").toLowerCase().trim();
+ if(/\b(scan|scanner|scanne|audite|audit|sécurité|security|vuln|vulnerability|failles?)\b/i.test(s)) return true;
+ return /\b(pentest|test de pénétration|penetration test)\b/i.test(s);
 }
 function extractFirstUrl(t){
  const m=String(t||"").match(/https?:\/\/[^\s<>"']+/i);
