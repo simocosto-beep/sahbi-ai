@@ -1,5 +1,8 @@
 import http from "node:http";
+import https from "node:https";
 import crypto from "node:crypto";
+import dns from "node:dns/promises";
+import net from "node:net";
 
 const PORT = Number(process.env.PORT || 3000);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://simocosto-beep.github.io";
@@ -211,6 +214,167 @@ function finalText(data) {
   return text;
 }
 
+
+function isPrivateIp(ip) {
+  if (net.isIPv4(ip)) {
+    const p = ip.split(".").map(Number);
+    if (p[0] === 10 || p[0] === 127 || p[0] === 0) return true;
+    if (p[0] === 169 && p[1] === 254) return true;
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+    if (p[0] === 192 && p[1] === 168) return true;
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;
+    if (p[0] >= 224) return true;
+    return false;
+  }
+  if (net.isIPv6(ip)) {
+    const s = ip.toLowerCase();
+    return s === "::" || s === "::1" || s.startsWith("fc") || s.startsWith("fd") ||
+      s.startsWith("fe8") || s.startsWith("fe9") || s.startsWith("fea") || s.startsWith("feb") ||
+      s.startsWith("ff") || s.startsWith("2001:db8:");
+  }
+  return true;
+}
+
+async function resolvePublicTarget(hostname) {
+  if (!hostname || hostname.length > 253) throw new Error("invalid_host");
+  if (hostname === "localhost" || hostname.endsWith(".local")) throw new Error("private_target");
+  const literal = net.isIP(hostname);
+  if (literal) {
+    if (isPrivateIp(hostname)) throw new Error("private_target");
+    return hostname;
+  }
+  const rows = await dns.lookup(hostname, { all: true, verbatim: true });
+  if (!rows.length) throw new Error("dns_not_found");
+  const publicRows = rows.filter(r => !isPrivateIp(r.address));
+  if (!publicRows.length || publicRows.length !== rows.length) throw new Error("private_target");
+  return publicRows[0].address;
+}
+
+function headerValue(headers, name) {
+  const v = headers[name.toLowerCase()];
+  return Array.isArray(v) ? v.join(", ") : String(v || "");
+}
+
+function inspectPinnedUrl(targetUrl, ip) {
+  return new Promise((resolve, reject) => {
+    const isHttps = targetUrl.protocol === "https:";
+    const client = isHttps ? https : http;
+    const port = targetUrl.port ? Number(targetUrl.port) : (isHttps ? 443 : 80);
+    if (!([80,443,8080,8443].includes(port))) return reject(new Error("unsupported_port"));
+
+    const options = {
+      host: ip,
+      port,
+      method: "GET",
+      path: targetUrl.pathname + targetUrl.search,
+      headers: {
+        "Host": targetUrl.host,
+        "User-Agent": "Sahbi-Security-Lab/1.0",
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Connection": "close",
+      },
+      timeout: 8000,
+      rejectUnauthorized: false,
+      servername: isHttps ? targetUrl.hostname : undefined,
+    };
+
+    const req = client.request(options, res => {
+      let body = "";
+      let bytes = 0;
+      res.setEncoding("utf8");
+      res.on("data", chunk => {
+        bytes += Buffer.byteLength(chunk);
+        if (bytes <= 131072) body += chunk;
+      });
+      res.on("end", () => {
+        let tls = null;
+        if (isHttps && res.socket && typeof res.socket.getPeerCertificate === "function") {
+          const cert = res.socket.getPeerCertificate();
+          const cipher = typeof res.socket.getCipher === "function" ? res.socket.getCipher() : null;
+          tls = {
+            authorized: Boolean(res.socket.authorized),
+            authorizationError: res.socket.authorizationError || null,
+            protocol: typeof res.socket.getProtocol === "function" ? res.socket.getProtocol() : null,
+            cipher: cipher ? cipher.name : null,
+            validFrom: cert && cert.valid_from || null,
+            validTo: cert && cert.valid_to || null,
+            subject: cert && cert.subject ? cert.subject.CN || null : null,
+            issuer: cert && cert.issuer ? cert.issuer.CN || cert.issuer.O || null : null,
+          };
+        }
+        resolve({
+          status: res.statusCode || 0,
+          headers: res.headers,
+          body: body.slice(0, 131072),
+          tls,
+        });
+      });
+    });
+
+    req.on("timeout", () => req.destroy(new Error("target_timeout")));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+function securityFindings(url, result) {
+  const h = result.headers || {};
+  const findings = [];
+  const add = (severity, title, detail) => findings.push({ severity, title, detail });
+
+  if (url.protocol !== "https:") add("high", "HTTPS absent", "La cible utilise HTTP. Les échanges peuvent être interceptés ou modifiés.");
+  if (url.protocol === "https:" && result.tls) {
+    if (!result.tls.authorized) add("high", "Certificat TLS non validé", result.tls.authorizationError || "La chaîne de confiance n'est pas validée.");
+    if (result.tls.protocol && !/^TLSv1\.[23]$/i.test(result.tls.protocol)) add("medium", "Version TLS ancienne", "Protocole observé: " + result.tls.protocol);
+    if (result.tls.validTo) {
+      const days = Math.floor((new Date(result.tls.validTo).getTime() - Date.now()) / 86400000);
+      if (Number.isFinite(days) && days < 30) add(days < 0 ? "high" : "medium", "Certificat proche de l'expiration", "Expiration dans environ " + days + " jour(s).");
+    }
+  }
+
+  const securityHeaders = [
+    ["strict-transport-security","HSTS","medium"],
+    ["content-security-policy","Content-Security-Policy","medium"],
+    ["x-content-type-options","X-Content-Type-Options","low"],
+    ["referrer-policy","Referrer-Policy","low"],
+    ["permissions-policy","Permissions-Policy","low"],
+  ];
+  for (const [key,label,sev] of securityHeaders) {
+    if (!headerValue(h,key)) add(sev, label + " absent", "Header de sécurité non détecté.");
+  }
+
+  const xfo = headerValue(h,"x-frame-options");
+  const csp = headerValue(h,"content-security-policy");
+  if (!xfo && !/frame-ancestors/i.test(csp)) add("medium", "Protection anti-clickjacking absente", "Ni X-Frame-Options ni frame-ancestors n'ont été détectés.");
+
+  const server = headerValue(h,"server");
+  const powered = headerValue(h,"x-powered-by");
+  if (server) add("info", "Header Server exposé", server);
+  if (powered) add("low", "X-Powered-By exposé", powered);
+
+  const acao = headerValue(h,"access-control-allow-origin");
+  const acac = headerValue(h,"access-control-allow-credentials");
+  if (acao === "*" && acac.toLowerCase() === "true") add("high", "CORS incohérent", "Access-Control-Allow-Origin=* avec credentials=true.");
+  else if (acao === "*") add("info", "CORS permissif", "Access-Control-Allow-Origin=* détecté.");
+
+  const cookies = h["set-cookie"];
+  const cookieRows = Array.isArray(cookies) ? cookies : cookies ? [String(cookies)] : [];
+  for (const row of cookieRows.slice(0,10)) {
+    const name = row.split("=")[0] || "cookie";
+    if (!/;\s*secure/i.test(row) && url.protocol === "https:") add("medium", "Cookie sans Secure", name);
+    if (!/;\s*httponly/i.test(row)) add("low", "Cookie sans HttpOnly", name);
+    if (!/;\s*samesite=/i.test(row)) add("low", "Cookie sans SameSite", name);
+  }
+
+  const loc = headerValue(h,"location");
+  if (result.status >= 300 && result.status < 400 && loc) add("info", "Redirection", "HTTP " + result.status + " vers " + loc);
+
+  if (/<meta[^>]+http-equiv=["']?refresh/i.test(result.body || "")) add("info", "Meta refresh détecté", "La page contient une redirection côté HTML.");
+  if (/http:\/\//i.test(result.body || "") && url.protocol === "https:") add("low", "Références HTTP détectées", "La page HTTPS contient au moins une référence http://; vérifier le contenu mixte.");
+
+  return findings;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
   const origin = allowedOrigin(req);
@@ -264,6 +428,49 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "POST" && url.pathname === "/api/owner/logout") {
     return json(res, 200, { ok: true }, origin);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/security/check") {
+    const owner = verifyOwnerToken(ownerTokenFrom(req));
+    if (!owner) return json(res, 401, { error: "owner_required", message: "Mode Owner requis pour Security Lab." }, origin);
+
+    const rate = consumeRate(req, true);
+    if (!rate.ok) return json(res, 429, { error: "rate_limited", retryAfter: rate.retryAfter }, origin);
+
+    try {
+      const body = await readBody(req);
+      if (body.authorized !== true) return json(res, 400, { error: "authorization_required", message: "Confirme que tu possèdes la cible ou que tu as une autorisation explicite." }, origin);
+      let rawTarget = String(body.target || "").trim();
+      if (!rawTarget) return json(res, 400, { error: "target_required" }, origin);
+      if (!/^https?:\/\//i.test(rawTarget)) rawTarget = "https://" + rawTarget;
+      const target = new URL(rawTarget);
+      if (!["http:","https:"].includes(target.protocol)) return json(res, 400, { error: "unsupported_scheme" }, origin);
+      if (target.username || target.password) return json(res, 400, { error: "credentials_in_url_not_allowed" }, origin);
+      if (target.pathname.length > 1500 || target.search.length > 1500) return json(res, 400, { error: "target_too_long" }, origin);
+
+      const ip = await resolvePublicTarget(target.hostname);
+      const result = await inspectPinnedUrl(target, ip);
+      const findings = securityFindings(target, result);
+
+      return json(res, 200, {
+        ok: true,
+        target: target.origin + target.pathname,
+        resolvedIp: ip,
+        status: result.status,
+        tls: result.tls,
+        findings,
+        summary: {
+          high: findings.filter(x => x.severity === "high").length,
+          medium: findings.filter(x => x.severity === "medium").length,
+          low: findings.filter(x => x.severity === "low").length,
+          info: findings.filter(x => x.severity === "info").length,
+        },
+      }, origin);
+    } catch (error) {
+      const msg = String(error && error.message || error);
+      const safe = ["private_target","invalid_host","dns_not_found","unsupported_port","target_timeout"].includes(msg) ? msg : "scan_failed";
+      return json(res, 400, { error: safe, message: safe === "private_target" ? "Les cibles locales/privées sont bloquées par ce scanner cloud." : "Impossible d'analyser cette cible." }, origin);
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/api/run") {

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070b14"><title>Sahbi AI · Security Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#070b14;--panel:#0f172a;--line:rgba(255,255,255,.09);--muted:#94a3b8;--text:#f8fafc;--a:#7c3aed}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(800px 500px at 100% 0,rgba(124,58,237,.2),transparent 60%),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+header{position:sticky;top:0;z-index:3;background:#070b14ed;border-bottom:1px solid var(--line);padding:12px 14px}.head{max-width:980px;margin:auto;display:flex;justify-content:space-between;gap:10px;align-items:center}
+button,input{font:inherit}button{border:1px solid var(--line);background:#172036;color:#fff;border-radius:11px;padding:10px 12px}.primary{background:var(--a);border-color:transparent}
+main{max-width:980px;margin:auto;padding:18px 14px}.card{background:linear-gradient(180deg,#10192b,#0c1423);border:1px solid var(--line);border-radius:17px;padding:15px;margin-bottom:12px}
+.muted{color:var(--muted);font-size:12px;line-height:1.5}.row{display:flex;gap:8px;flex-wrap:wrap}.row input[type=text]{flex:1;min-width:220px;background:#0b1323;color:#fff;border:1px solid var(--line);border-radius:11px;padding:11px}
+.finding{border:1px solid var(--line);border-radius:12px;padding:11px;margin:8px 0;background:#0b1323}.sev{font-weight:800;font-size:11px;text-transform:uppercase}.high{color:#fca5a5}.medium{color:#fdba74}.low{color:#fde68a}.info{color:#93c5fd}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.box{border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;background:#0b1323}
+@media(max-width:620px){.summary{grid-template-columns:1fr 1fr}.head{align-items:flex-start}.row{flex-direction:column}.row input[type=text]{width:100%}}
+</style></head><body>
+<header><div class="head"><div><b>🛡️ Sahbi Security Lab</b><div class="muted">Owner · audit autorisé · checks non destructifs</div></div><button onclick="location.href='./'">← Chat</button></div></header>
+<main>
+<section class="card"><h2 style="margin-top:0">Audit d'une cible autorisée</h2>
+<p class="muted">Ce module inspecte une cible publique que tu possèdes ou pour laquelle tu as une autorisation explicite. Les IP privées/locales sont bloquées côté serveur.</p>
+<div class="row"><input id="target" type="text" placeholder="https://example.com"><button id="scan" class="primary">🔎 Analyser</button></div>
+<label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px"><input id="auth" type="checkbox"><span>Je confirme que je possède cette cible ou que j'ai une autorisation explicite pour l'auditer.</span></label>
+<div id="status" class="muted" style="margin-top:10px"></div></section>
+<section id="report" class="card" style="display:none"><h3>Rapport</h3><div id="meta" class="muted"></div><div id="summary" class="summary"></div><div id="findings"></div>
+<div class="row"><button id="copy">📋 Copier le rapport</button><button id="chat">💬 Envoyer au chat</button></div></section>
+</main>
+<script>
+const API="https://sahbi-api-production.up.railway.app";
+const $=s=>document.querySelector(s);
+let last=null;
+function esc(s){return String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
+$("#scan").onclick=async()=>{
+  const token=localStorage.getItem("sahbi_owner_token")||"";
+  if(!token){$("#status").textContent="Active d'abord 👑 Owner dans Sahbi.";return}
+  if(!$("#auth").checked){$("#status").textContent="Confirme l'autorisation de la cible.";return}
+  const target=$("#target").value.trim();if(!target)return;
+  $("#scan").disabled=true;$("#status").textContent="Analyse en cours…";
+  try{
+    const r=await fetch(API+"/api/security/check",{method:"POST",headers:{"Content-Type":"application/json","X-Sahbi-Owner-Token":token},body:JSON.stringify({target,authorized:true})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.message||d.error||("HTTP "+r.status));
+    last=d;render(d);$("#status").textContent="Audit terminé ✅";
+  }catch(e){$("#status").textContent="Erreur: "+(e.message||e)}
+  finally{$("#scan").disabled=false}
+};
+function render(d){
+  $("#report").style.display="block";
+  $("#meta").textContent=d.target+" · HTTP "+d.status+" · IP "+d.resolvedIp+(d.tls?.protocol?" · "+d.tls.protocol:"");
+  const s=d.summary||{};$("#summary").innerHTML=["high","medium","low","info"].map(k=>'<div class="box"><b class="'+k+'">'+(s[k]||0)+'</b><br><span class="muted">'+k+'</span></div>').join("");
+  $("#findings").innerHTML=(d.findings||[]).map(f=>'<div class="finding"><div class="sev '+esc(f.severity)+'">'+esc(f.severity)+'</div><b>'+esc(f.title)+'</b><div class="muted">'+esc(f.detail)+'</div></div>').join("")||'<p class="muted">Aucun finding dans ces checks passifs.</p>';
+}
+function reportText(){if(!last)return "";return "Security Lab — "+last.target+"\nHTTP: "+last.status+"\nIP: "+last.resolvedIp+"\n"+(last.findings||[]).map(f=>"["+f.severity.toUpperCase()+"] "+f.title+" — "+f.detail).join("\n")}
+$("#copy").onclick=()=>navigator.clipboard?.writeText(reportText());
+$("#chat").onclick=()=>{if(!last)return;localStorage.setItem("sahbi_security_report",reportText());localStorage.setItem("sahbi_prefill","Analyse ce rapport Security Lab et propose les corrections prioritaires:\n\n"+reportText());location.href="./"};
+</script></body></html>
