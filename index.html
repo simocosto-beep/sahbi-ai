@@ -97,7 +97,7 @@ main{padding:18px 14px 160px}
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button id="cloudModeBtn">☁️ Sahbi Cloud</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
+<div class="row"><button id="cloudModeBtn">☁️ Sahbi Cloud</button><button id="ownerBtn">👑 Owner</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -107,6 +107,7 @@ main{padding:18px 14px 160px}
 </div></div>
 <script>
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
+let ownerToken=localStorage.getItem("sahbi_owner_token")||"";
 const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||1200);return {choices:[{message:{content:text}}]}}}}};
 let engine=cloudEngine,cpuPipe=null,backendMode="cloud",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
 function chooseAutoModel(){
@@ -127,7 +128,7 @@ async function cloudChat(messages,maxTokens=900){
   try{
     const r=await fetch(SAHBI_API+"/api/chat",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json",...(ownerToken?{"X-Sahbi-Owner-Token":ownerToken}:{})},
       body:JSON.stringify({messages,max_tokens:maxTokens}),
       signal:controller.signal
     });
@@ -196,6 +197,44 @@ const fw=$("#featureWeb");if(fw)fw.onclick=()=>{prompt.value="/web ";prompt.focu
 const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
+async function refreshOwnerStatus(){
+  if(!ownerToken){$("#ownerBtn").textContent="👑 Owner";return false}
+  try{
+    const r=await fetch(SAHBI_API+"/api/owner/status",{headers:{"X-Sahbi-Owner-Token":ownerToken}});
+    const d=await r.json();
+    if(d.owner){$("#ownerBtn").textContent="👑 Owner actif";return true}
+  }catch{}
+  ownerToken="";
+  localStorage.removeItem("sahbi_owner_token");
+  $("#ownerBtn").textContent="👑 Owner";
+  return false;
+}
+$("#ownerBtn").onclick=async()=>{
+  if(await refreshOwnerStatus()){
+    if(confirm("Mode Owner actif. Se déconnecter ?")){
+      ownerToken="";
+      localStorage.removeItem("sahbi_owner_token");
+      $("#ownerBtn").textContent="👑 Owner";
+      status.innerHTML="<b>Owner déconnecté.</b> Mode visiteur actif.";
+    }
+    return;
+  }
+  const pin=prompt("PIN Owner Sahbi :");
+  if(!pin)return;
+  try{
+    const r=await fetch(SAHBI_API+"/api/owner/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.message||d.error||"PIN refusé");
+    ownerToken=d.token;
+    localStorage.setItem("sahbi_owner_token",ownerToken);
+    $("#ownerBtn").textContent="👑 Owner actif";
+    status.innerHTML="<b>👑 Owner mode actif.</b> Sahbi te reconnaît comme propriétaire pour 24 h.";
+    $("#drawer").classList.remove("show");
+  }catch(e){
+    status.innerHTML="<b>Owner :</b> "+(e.message||e);
+  }
+};
+refreshOwnerStatus();
 $("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Sahbi Cloud · Railway</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 if(backendMode==="cloud"){
