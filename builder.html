@@ -20,7 +20,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
 </style>
 </head><body>
-<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ Télécharger</button></div></header>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 Projet ZIP</button></div></header>
 <div class="grid">
 <section class="side">
   <div class="label">Modèle</div>
@@ -31,7 +31,14 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
     <option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Hermes 8B</option>
   </select>
   <button id="load" class="primary">Charger Builder AI</button>
-  <div class="label">Décris ce que tu veux construire</div>
+  <div class="label">Type de projet</div>
+<select id="projectType">
+<option value="auto" selected>Auto · je détecte</option>
+<option value="web">Site / App web</option>
+<option value="software">Logiciel / CLI / Backend</option>
+<option value="systems">Système / OS / bas niveau</option>
+</select>
+<div class="label">Décris ce que tu veux construire</div>
   <textarea id="brief" placeholder="Ex: Une app de petites annonces au Maroc avec recherche, cartes, favoris et design premium…"></textarea>
   <div class="row">
     <button id="build" class="primary" disabled>⚡ Construire</button>
@@ -39,6 +46,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
     <button id="fix" disabled>🧯 Corriger</button>
   </div>
   <div class="status" id="status">Charge le modèle. Tout le code est généré sur ton appareil.</div>
+<div class="status" id="plan" style="display:none"></div>
   <div class="projects">
     <div class="label">Projets locaux</div>
     <div id="projectList"></div>
@@ -54,7 +62,7 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 <script type="module">
 import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 const $=s=>document.querySelector(s);
-let engine=null,current="html";
+let engine=null,current="html",projectFiles=[];
 let files={html:`<main style="font-family:system-ui;padding:40px"><h1>Sahbi AI Builder</h1><p>Décris ton application puis clique Construire.</p></main>`,css:"",js:""};
 function show(){ $("#editor").value=files[current]; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===current)); preview();}
 function preview(){const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;$("#frame").srcdoc=doc}
@@ -68,19 +76,31 @@ function extract(raw){
  const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error("Réponse de code invalide");
  const d=JSON.parse(m[0]); return {html:d.html||"",css:d.css||"",js:d.js||""};
 }
+function detectType(brief){const b=brief.toLowerCase();if(/système d'exploitation|operating system|\bos\b|kernel|bootloader|bare metal|driver/.test(b))return "systems";if(/api|backend|serveur|cli|python|node|logiciel|desktop|script/.test(b))return "software";return "web"}
 async function ask(mode){
  if(!engine)return;
  const brief=$("#brief").value.trim();
  $("#status").textContent=mode==="build"?"Construction…":mode==="fix"?"Diagnostic et correction…":"Amélioration…";
- const spec=`Tu es Sahbi AI Builder, architecte logiciel et designer frontend senior.
-Tu dois retourner UNIQUEMENT un objet JSON valide avec exactement ces clés: {"html":"...","css":"...","js":"..."}.
-Aucun markdown, aucune explication avant/après.
-Crée une application web complète, responsive, élégante et fonctionnelle en HTML/CSS/JS vanilla. Aucun backend réel: simule les données avec localStorage si nécessaire.
-Les boutons doivent fonctionner. Ajoute validation, états vides, messages d'erreur, accessibilité et responsive mobile.
-N'utilise aucune dépendance sauf via CDN si absolument nécessaire.
+ const chosen=$("#projectType").value==="auto"?detectType(brief):$("#projectType").value;
+ const webMode=chosen==="web";
+ const spec=webMode?`Tu es Sahbi AI Builder, architecte logiciel et designer frontend senior.
+Retourne UNIQUEMENT un objet JSON valide avec exactement ces clés: {"html":"...","css":"...","js":"..."}.
+Aucun markdown ni explication.
+Crée une application web complète, responsive, élégante et fonctionnelle en HTML/CSS/JS vanilla. Les boutons doivent fonctionner. Ajoute validation, états vides, accessibilité et responsive.
 MODE: ${mode}
 DEMANDE: ${brief||"Améliore l'application existante."}
-CODE ACTUEL:
+CODE ACTUEL:`:`Tu es Sahbi AI Builder Pro, architecte logiciel senior spécialisé en systèmes, backend, CLI et logiciels.
+Retourne UNIQUEMENT un objet JSON valide de cette forme:
+{"summary":"résumé","run":"commandes de build/run","files":[{"path":"README.md","content":"..."},{"path":"src/...","content":"..."}]}
+Aucun markdown hors JSON.
+Tu dois créer un VRAI squelette de projet cohérent, multi-fichiers, avec README, architecture, commandes de compilation et code initial.
+Si la demande est un système d'exploitation, construis un projet ÉDUCATIF minimal et réaliste (par exemple kernel Rust/C + bootloader/config adaptée), explique les prérequis dans README, et ne prétends jamais produire un OS complet de production en une seule génération.
+Privilégie du code compilable, une structure claire et des étapes progressives.
+TYPE: ${chosen}
+MODE: ${mode}
+DEMANDE: ${brief||"Construis le projet demandé."}`;
+ if(webMode) spec+=`
+
 HTML:
 ${files.html.slice(0,12000)}
 CSS:
@@ -89,8 +109,10 @@ JS:
 ${files.js.slice(0,12000)}
 `;
  try{
-   const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:mode==="fix"?0.15:.45,max_tokens:5000});
-   files=extract(r.choices?.[0]?.message?.content||""); current="html";show();$("#status").textContent="Terminé ✅ — teste la preview puis demande une amélioration.";
+   const r=await engine.chat.completions.create({messages:[{role:"system",content:spec}],temperature:mode==="fix"?0.15:.4,max_tokens:7000});
+   const raw=r.choices?.[0]?.message?.content||"";
+   if(webMode){files=extract(raw);projectFiles=[];current="html";show();$("#plan").style.display="none";$("#status").textContent="Terminé ✅ — teste la preview puis demande une amélioration."}
+   else{const m=raw.match(/\{[\s\S]*\}/);if(!m)throw new Error("Projet multi-fichiers invalide");const d=JSON.parse(m[0]);projectFiles=Array.isArray(d.files)?d.files:[];$("#plan").style.display="block";$("#plan").textContent=(d.summary||"Projet généré")+"\n\nBuild / Run:\n"+(d.run||"Voir README")+"\n\nFichiers:\n"+projectFiles.map(x=>"• "+x.path).join("\n");$("#status").textContent="Projet système/logiciel généré ✅ — télécharge le ZIP pour compiler sur un PC ou sandbox."}
  }catch(e){$("#status").textContent="Erreur Builder: "+(e.message||e)}
 }
 $("#build").onclick=()=>ask("build");$("#improve").onclick=()=>ask("improve");$("#fix").onclick=()=>ask("fix");
@@ -99,5 +121,6 @@ function projects(){return JSON.parse(localStorage.getItem("sahbi_builder_projec
 function renderProjects(){const p=projects(),box=$("#projectList");box.innerHTML="";Object.keys(p).forEach(name=>{const d=document.createElement("div");d.className="project";const n=document.createElement("span");n.textContent=name;n.style.cursor="pointer";n.onclick=()=>{files=p[name].files;$("#brief").value=p[name].brief||"";$("#projectName").value=name;current="html";show()};const del=document.createElement("button");del.textContent="🗑";del.className="danger";del.onclick=()=>{const q=projects();delete q[name];localStorage.setItem("sahbi_builder_projects",JSON.stringify(q));renderProjects()};d.append(n,del);box.appendChild(d)})}
 $("#save").onclick=()=>{const name=$("#projectName").value.trim()||("Projet "+new Date().toLocaleString());const p=projects();p[name]={files,brief:$("#brief").value,updated:new Date().toISOString()};localStorage.setItem("sahbi_builder_projects",JSON.stringify(p));$("#projectName").value=name;renderProjects();$("#status").textContent="Projet sauvegardé localement ✅"};renderProjects();
 
+$("#downloadZip").onclick=async()=>{try{const JSZip=(await import("https://esm.run/jszip@3.10.1")).default;const zip=new JSZip();if(projectFiles.length){for(const f of projectFiles)zip.file(f.path,f.content||"")}else{zip.file("index.html",`<!doctype html><html><head><meta charset="utf-8"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`);zip.file("README.md","Generated by Sahbi AI Builder")}const blob=await zip.generateAsync({type:"blob"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=($("#projectName").value.trim()||"sahbi-project").replace(/[^a-z0-9-_]+/gi,"-").toLowerCase()+".zip";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}catch(e){$("#status").textContent="Erreur ZIP: "+(e.message||e)}};
 $("#download").onclick=async()=>{const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;const blob=new Blob([doc],{type:"text/html"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=($("#projectName").value.trim()||"sahbi-app").replace(/[^a-z0-9-_]+/gi,"-").toLowerCase()+".html";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)};
 </script></body></html>
