@@ -20,17 +20,12 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
 @media(max-width:900px){.grid{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}.work{height:900px}}
 </style>
 </head><body>
-<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · génération locale</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 ZIP courant</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
+<header><div class="brand"><div class="logo">S</div><div><b>Sahbi AI Builder</b><div style="font-size:11px;color:#94a3b8">Sites & apps · Cloud Builder stable</div></div></div><div class="row"><button onclick="location.href='./'">← Chat</button><button id="download">⬇️ HTML</button><button id="downloadZip">📦 ZIP courant</button><button onclick="location.href='./deploy.html'">🚀 Deploy Hub</button></div></header>
 <div class="grid">
 <section class="side">
   <div class="label">Modèle</div>
-  <select id="model">
-    <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Rapide 1B</option>
-    <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC" selected>Hermes 3B</option>
-    <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">DeepSeek R1 7B</option>
-    <option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Hermes 8B</option>
-  </select>
-  <button id="load" class="primary">Charger Builder AI</button>
+  <select id="model" disabled><option selected>Cloud Genius · stable</option></select>
+  <button id="load" class="primary" disabled>Cloud prêt</button>
   <div class="label">Type de projet</div>
 <select id="projectType">
 <option value="auto" selected>Auto · je détecte</option>
@@ -42,13 +37,13 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
   <textarea id="brief" placeholder="Ex: Une app de petites annonces au Maroc avec recherche, cartes, favoris et design premium…"></textarea>
   <div class="row">
     <button id="build" class="primary" disabled>⚡ Construire</button>
-    <button id="autopilot" disabled>🧠 Autopilot</button>
-    <button id="ship" disabled>🏁 Produit final</button>
-    <button id="test" disabled>🧪 Build & Test</button>
-    <button id="improve" disabled>✨ Améliorer</button>
-    <button id="fix" disabled>🧯 Corriger</button>
+    <button id="autopilot">🧠 Autopilot</button>
+    <button id="ship">🏁 Produit final</button>
+    <button id="test">🧪 Build & Test</button>
+    <button id="improve">✨ Améliorer</button>
+    <button id="fix">🧯 Corriger</button>
   </div>
-  <div class="status" id="status">Charge le modèle. Tout le code est généré sur ton appareil.</div>
+  <div class="status" id="status">Cloud Builder prêt — aucun modèle lourd à charger sur ton appareil.</div>
 <div class="status" id="plan" style="display:none"></div>
 <div class="status" id="testlog" style="display:none;white-space:pre-wrap"></div>
 <div class="status" id="shiplog" style="display:none;white-space:pre-wrap"></div>
@@ -64,10 +59,12 @@ button,select,textarea,input{font:inherit}button,select{border:1px solid var(--l
   <div class="preview"><iframe id="frame" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe></div>
 </section>
 </div>
-<script type="module">
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+<script>
 const $=s=>document.querySelector(s);
-let engine=null,current="html",projectFiles=[],activeProject=localStorage.getItem("sahbi_active_project")||"";
+function cloudText(res){if(typeof res==="string")return res;if(typeof res?.message?.content==="string")return res.message.content;if(Array.isArray(res?.message?.content))return res.message.content.map(x=>x?.text||"").join("");if(typeof res?.text==="string")return res.text;return String(res||"")}
+async function cloudChat(messages,maxTokens=7000){if(!window.puter?.ai?.chat)throw new Error("Cloud AI indisponible");const flat=messages.map(m=>(m.role||"user").toUpperCase()+": "+String(m.content||"")).join("\n\n")+"\n\nASSISTANT:";let timer;try{const timeout=new Promise((_,rej)=>timer=setTimeout(()=>rej(new Error("Délai IA dépassé. Réessaie.")),70000));const res=await Promise.race([puter.ai.chat(flat,{model:"openai/gpt-5.4-nano"}),timeout]);const text=cloudText(res).trim();if(!text)throw new Error("Réponse IA vide");return text}finally{clearTimeout(timer)}}
+const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||7000);return {choices:[{message:{content:text}}]}}}}};
+let engine=cloudEngine,current="html",projectFiles=[],activeProject=localStorage.getItem("sahbi_active_project")||"";
 let files={html:`<main style="font-family:system-ui;padding:40px"><h1>Sahbi AI Builder</h1><p>Décris ton application puis clique Construire.</p></main>`,css:"",js:""};
 function show(){ $("#editor").value=files[current]; document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===current)); preview();}
 function preview(){const doc=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js.replace(/<\/script>/g,"<\\/script>")}<\/script></body></html>`;$("#frame").srcdoc=doc}
@@ -75,7 +72,7 @@ $("#editor").oninput=e=>{files[current]=e.target.value;preview()};
 document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{files[current]=$("#editor").value;current=b.dataset.tab;show()});
 show();if(activeProject){const p=JSON.parse(localStorage.getItem("sahbi_projects")||"{}")[activeProject];if(p){$("#projectName").value=activeProject;$("#brief").value=(p.memory||"")?("Contexte projet "+activeProject+":\n"+p.memory):$("#brief").value;$("#status").textContent="Projet actif: "+activeProject+" — contexte chargé depuis Project Hub."}}
 
-$("#load").onclick=async()=>{if(engine)return;$("#load").disabled=true;$("#status").textContent="Chargement du cerveau Builder…";try{engine=await webllm.CreateMLCEngine($("#model").value,{initProgressCallback:p=>$("#status").textContent="Chargement "+Math.round((p.progress||0)*100)+"% — "+(p.text||"")});$("#status").textContent="Builder prêt ✅";$("#build").disabled=$("#autopilot").disabled=$("#ship").disabled=$("#test").disabled=$("#improve").disabled=$("#fix").disabled=false;$("#load").textContent="IA prête"}catch(e){$("#status").textContent="Erreur: "+(e.message||e);$("#load").disabled=false}};
+$("#load").onclick=async()=>{engine=cloudEngine;$("#status").textContent="Cloud Builder prêt ✅";};
 
 function extract(raw){
  const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error("Réponse de code invalide");

@@ -57,16 +57,9 @@ main{padding:18px 14px 160px}
 <div class="app">
 <header>
   <div class="header-inner">
-    <div class="brand"><div class="logo">S</div><div class="brand-text"><div class="brand-title">Sahbi AI</div><div class="sub">Ton assistant personnel · local-first</div></div></div>
+    <div class="brand"><div class="logo">S</div><div class="brand-text"><div class="brand-title">Sahbi AI</div><div class="sub">Ton assistant personnel · cloud-first</div></div></div>
     <div class="actions">
-      <select id="model" title="Modèle">
-        <option value="auto">Genius Auto</option>
-        <option value="SmolLM2-360M-Instruct-q4f32_1-MLC">Ultra Lite 360M · GPU</option>
-        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Rapide 1B</option>
-        <option value="Hermes-3-Llama-3.2-3B-q4f16_1-MLC">Smart 3B</option>
-        <option value="DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC">Raisonnement 7B</option>
-        <option value="Hermes-3-Llama-3.1-8B-q4f16_1-MLC">Expert 8B</option>
-      </select>
+      <select id="model" title="Modèle" disabled><option value="cloud" selected>Cloud Genius · stable</option></select>
       <button id="menuBtn">☰</button>
       <button id="load" style="display:none">Charger l’IA</button>
       <button id="agentToggle" style="display:none">⚡ Agent ON</button>
@@ -104,7 +97,7 @@ main{padding:18px 14px 160px}
 </div>
 </div>
 <div class="drawer" id="drawer"><div class="panel"><div class="row" style="justify-content:space-between"><h2>Sahbi AI</h2><button id="closeDrawer">✕</button></div>
-<div class="row"><button id="cloudModeBtn">☁️ Cloud Genius</button><button id="localModeBtn">📱 Local</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
+<div class="row"><button id="cloudModeBtn">☁️ Cloud Genius</button><button onclick="location.href='./projects.html'">📁 Projets</button><button onclick="location.href='./builder.html'">🛠️ Builder</button><button onclick="location.href='./sandbox.html'">🧪 Sandbox</button><button onclick="location.href='./studio.html'">🎨 Studio</button><button onclick="location.href='./plugins.html'">🔌 Plugins</button><button onclick="location.href='./deploy.html'">🚀 Deploy</button><button id="newChatMenu">🧹 Nouveau chat</button></div>
 <hr style="border-color:var(--line);margin:18px 0">
 <h3>Mémoire personnelle</h3><p class="hint">Stockée uniquement dans ce navigateur. Sahbi AI peut aussi lire des fichiers texte, code, CSV/JSON et PDF directement sur ton appareil.</p><textarea id="memory" placeholder="Ex: Réponds surtout en français et darija. Mes projets principaux sont…"></textarea><div class="row"><button id="saveMemory" class="primary">Enregistrer</button><button id="exportBtn">Exporter</button><button id="importTrigger">Importer</button><input id="importFile" type="file" accept="application/json" hidden></div>
 <hr style="border-color:var(--line);margin:18px 0">
@@ -112,10 +105,10 @@ main{padding:18px 14px 160px}
 <p class="hint">Sahbi AI peut apprendre des procédures et habitudes. Les skills sont déclaratifs : ils n’exécutent jamais de code arbitraire.</p>
 <div id="skillsList"></div>
 </div></div>
-<script type="module">
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+<script>
 const $=s=>document.querySelector(s),chat=$("#chat"),prompt=$("#prompt"),send=$("#send"),load=$("#load"),status=$("#status");
-let engine=null,cpuPipe=null,backendMode="cloud",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
+const cloudEngine={chat:{completions:{create:async o=>{const text=await cloudChat(o.messages||[],o.max_tokens||1200);return {choices:[{message:{content:text}}]}}}}};
+let engine=cloudEngine,cpuPipe=null,backendMode="cloud",busy=false,agentMode=true,attachedText="",attachedName="",history=JSON.parse(localStorage.getItem("sahbi_history")||"[]"),memory=localStorage.getItem("sahbi_memory")||"";$("#memory").value=memory;
 function chooseAutoModel(){
  const dm=Number(navigator.deviceMemory||4);
  if(dm>=12) return "Hermes-3-Llama-3.1-8B-q4f16_1-MLC";
@@ -198,8 +191,7 @@ const fw=$("#featureWeb");if(fw)fw.onclick=()=>{prompt.value="/web ";prompt.focu
 const openMore=()=>$("#drawer").classList.add("show");
 $("#menuBtn").onclick=openMore;
 $("#newChatMenu").onclick=()=>{history=[];save();render();$("#drawer").classList.remove("show")};
-$("#cloudModeBtn").onclick=async()=>{await resetEngine();cpuPipe=null;backendMode="cloud";$("#model").innerHTML='<option selected>Cloud Genius · stable</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
-$("#localModeBtn").onclick=async()=>{await resetEngine();backendMode="cpu";$("#model").innerHTML='<option selected>Local CPU · 135M</option>';$("#model").disabled=true;await ensureCpuFallback();$("#drawer").classList.remove("show")};
+$("#cloudModeBtn").onclick=async()=>{engine=cloudEngine;backendMode="cloud";$("#model").innerHTML='<option selected>Cloud Genius · stable</option>';$("#model").disabled=true;await ensureCloud();$("#drawer").classList.remove("show")};
 function bubble(role,text){const d=document.createElement("div");d.className="msg "+(role==="user"?"user":"assistant");const body=document.createElement("div");body.textContent=text;d.appendChild(body);if(role!=="user"){const t=document.createElement("div");t.className="tts";t.textContent="🔊 Lire";t.onclick=()=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(body.textContent);u.lang="fr-FR";speechSynthesis.speak(u)};d.appendChild(t)}d._body=body;chat.appendChild(d);scrollTo(0,document.body.scrollHeight);return d}
 if(backendMode==="cloud"){
   $("#model").innerHTML='<option selected>Cloud Genius · stable</option>';
